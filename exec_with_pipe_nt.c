@@ -1,5 +1,5 @@
 #include "internals.h"
-
+#include <stdio.h>
 #define BUFSIZE 4096
 
 BOOL readFromPipe(HANDLE hReadPipe, PBYTE lpBuffer){
@@ -101,7 +101,8 @@ int main(int argc, char** argv){
   SECURITY_ATTRIBUTES sa;
   RtlZeroMemory(&sa, sizeof(sa));
 
-  //createpipe calls NtOpenFile and NtCreateNamedPipeFile then NtOpenFile again, need to keep reversing this
+  //createpipe calls NtOpenFile and NtCreateNamedPipeFile then NtOpenFile again, 
+  //TODO need to keep reversing this
   if(!CreatePipe(
     &hReadPipe,
     &hWritePipe,

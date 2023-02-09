@@ -47,11 +47,9 @@ typedef struct PS_CREATE_INFO{
           UCHAR DetectManifest : 1;
           UCHAR IFEOSkipDebugger : 1;
           UCHAR IFEODoNotPropagateKeyState : 1;
-          UCHAR SpareBits1 : 6;
-          UCHAR SpareBits1 : 4;
+          UCHAR SpareBits1 : 4; //used later version
           UCHAR IFEOKeyState : 2;
-          UCHAR SpareBits2 : 6;
-          UCHAR SpareBits2 : 8;       	
+          UCHAR SpareBits2 : 8; //used later version
           USHORT ProhibitedImageCharacteristics : 16;
         };
         ACCESS_MASK AdditionalFileAccess;
@@ -73,8 +71,7 @@ typedef struct PS_CREATE_INFO{
         UCHAR DevOverrideEnabled : 1;
         UCHAR ManifestDetected : 1;
         UCHAR ProtectedProcessLight : 1;
-        UCHAR SpareBits1 : 4;
-        UCHAR SpareBits1 : 3;
+        UCHAR SpareBits1 : 3; //used later version
         UCHAR SpareBits2 : 8;
         USHORT SpareBits3 : 16;
       };
