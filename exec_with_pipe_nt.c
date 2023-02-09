@@ -1,90 +1,6 @@
-#include "printfile.h"
+#include "internals.h"
 
 #define BUFSIZE 4096
-#define NT_SUCCESS(Status) (((NTSTATUS)(Status)) >= 0)
-#define NtCurrentProcess()((HANDLE)(LONG_PTR)-1)
-
-//https://learn.microsoft.com/en-us/windows/win32/api/ntdef/ns-ntdef-_object_attributes
-typedef struct OBJECT_ATTRIBUTES{
-
-} OBJECT_ATTRIBUTES;
-
-//https://captmeelo.com/redteam/maldev/2022/05/10/ntcreateuserprocess.html
-typedef NTSTATUS (NTAPI* ntCreateUserProcess)(
-  PHANDLE ProcessHandle,
-  PHANDLE ThreadHandle,
-  ACCESS_MASK ProcessDesiredAccess,
-  ACCESS_MASK ThreadDesiredAccess,
-  POBJECT_ATTRIBUTES ProcessObjectAttributes,
-  POBJECT_ATTRIBUTES ThreadObjectAttributes,
-  ULONG ProcessFlags,
-  ULONG ThreadFlags,
-  PRTL_USER_PROCESS_PARAMETERS ProcessParameters,
-  PPS_CREATE_INFO CreateInfo,
-  PPS_ATTRIBUTE_LIST AttributeList
-);
-
-//https://doxygen.reactos.org/d3/d21/struct__OBJECT__HANDLE__ATTRIBUTE__INFORMATION.html
-typedef struct OBJECT_HANDLE_ATTRIBUTE_INFORMATION {
-  BOOLEAN Inherit;
-  BOOLEAN ProtectFromClose;
-} OBJECT_HANDLE_ATTRIBUTE_INFORMATION;
-
-//https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntifs/nf-ntifs-ntallocatevirtualmemory
-typedef NTSTATUS (NTAPI* ntAllocateVirtualMemory)(
-  HANDLE ProcessHandle,
-  PVOID *BaseAddress,
-  ULONG_PTR ZeroBits,
-  PSIZE_T RegionSize,
-  ULONG AllocationType,
-  ULONG Protect
-);
-
-//https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntifs/nf-ntifs-ntfreevirtualmemory
-typedef NTSTATUS (NTAPI* ntFreeVirtualMemory)(
-  HANDLE ProcessHandle,
-  PVOID *BaseAddress,
-  PSIZE_T RegionSize,
-  ULONG FreeType
-);
-
-//https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntifs/ns-ntifs-_public_object_basic_information
-typedef struct OBJECT_BASIC_INFORMATION {
-  ULONG Attributes;
-  ACCESS_MASK GrantedAccess;
-  ULONG HandleCount;
-  ULONG PointerCount;
-  ULONG Reserved[10];
-}OBJECT_BASIC_INFORMATION;
-
-//https://www.geoffchappell.com/studies/windows/km/ntoskrnl/inc/api/ntobapi_x/object_information_class.htm
-typedef enum OBJECT_INFORMATION_CLASS {
-  ObjectBasicInformation,
-  ObjectNameInformation,
-  ObjectTypeInformation,
-  ObjectTypesInformation,
-  ObjectHandleFlagInformation,
-  ObjectSessionInformation,
-  ObjectSessionObjectInformation,
-  MaxObjectInfoClass
-} OBJECT_INFORMATION_CLASS;
-
-//https://learn.microsoft.com/en-us/windows/win32/api/winternl/nf-winternl-ntqueryobject
-typedef NTSTATUS (NTAPI* ntQueryObject)(
-  HANDLE Handle,
-  OBJECT_INFORMATION_CLASS ObjectInformationClass,
-  PVOID ObjectInformation,
-  ULONG ObjectInformationLength,
-  PULONG ReturnLength
-);
-
-//http://undocumented.ntinternals.net/index.html?page=UserMode%2FUndocumented%20Functions%2FNT%20Objects%2FType%20independed%2FNtSetInformationObject.html
-typedef NTSTATUS (NTAPI* ntSetInformationObject)(
-  HANDLE ObjectHandle,
-  OBJECT_INFORMATION_CLASS ObjectInformationClass,
-  PVOID ObjectInformation,
-  ULONG Length
-);
 
 BOOL readFromPipe(HANDLE hReadPipe, PBYTE lpBuffer){
   DWORD lpTotalBytesAvail = 0;
@@ -138,11 +54,13 @@ int main(int argc, char** argv){
   FARPROC fpNtFreeVirtualMemory = GetProcAddress(hNtdll, "NtFreeVirtualMemory");
   FARPROC fpNtQueryObject = GetProcAddress(hNtdll, "NtQueryObject");
   FARPROC fpNtSetInformationObject = GetProcAddress(hNtdll, "NtSetInformationObject");
-  //cast functions
+  FARPROC fpNtCreateUserProcess = GetProcAddress(hNtdll, "NtCreateUserProcess");
+  //cast functions to get our Nt function pointers
   ntAllocateVirtualMemory NtAllocateVirtualMemory = (ntAllocateVirtualMemory)fpNtAllocateVirtualMemory;
   ntFreeVirtualMemory NtFreeVirtualMemory = (ntFreeVirtualMemory)fpNtFreeVirtualMemory;
   ntQueryObject NtQueryObject = (ntQueryObject)fpNtQueryObject;
   ntSetInformationObject NtSetInformationObject = (ntSetInformationObject)fpNtSetInformationObject;
+  ntCreateUserProcess NtCreateUserProcess = (ntCreateUserProcess)fpNtCreateUserProcess;
 
   //get length of command line args
   SIZE_T dwArgsLen = 0;
@@ -222,16 +140,10 @@ int main(int argc, char** argv){
     return -1;
   }
 
-  //create process reverse engineering:
+  //CreateProcessA reverse engineering:
   //CreateProcessA -> CreateProcessInternalA -> CreateProcessInternalW -> ZwCreateUserProcess -> NtCreateUserProcess
   //So, let's user NtCreateUserProcess to make it happen
   //https://captmeelo.com/redteam/maldev/2022/05/10/ntcreateuserprocess.html
-  
-  
-  
-  
-  
-  
   STARTUPINFO si;
   RtlZeroMemory(&si, sizeof(si));
   si.cb = sizeof(si);
