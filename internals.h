@@ -3,6 +3,19 @@
 
 #define NT_SUCCESS(Status) (((NTSTATUS)(Status)) >= 0)
 #define NtCurrentProcess()((HANDLE)(LONG_PTR)-1)
+//https://doxygen.reactos.org/db/dc9/nt__native_8h.html#a0b49a0e798655827cb960ec9e6059538
+#define CTL_CODE(DeviceType, Function, Method, Access)(((DeviceType) << 16) | ((Access) << 14) | ((Function) << 2) | (Method))		
+//https://chromium.googlesource.com/external/github.com/DynamoRIO/drmemory/+/refs/heads/master/wininc/ntifs.h
+#define FSCTL_PIPE_PEEK CTL_CODE(FILE_DEVICE_NAMED_PIPE, 3, METHOD_BUFFERED, FILE_READ_DATA)
+
+//https://doxygen.reactos.org/d6/d09/struct__FILE__PIPE__PEEK__BUFFER.html
+typedef struct FILE_PIPE_PEEK_BUFFER{
+  ULONG NamedPipeState;
+  ULONG ReadDataAvailable;
+  ULONG NumberOfMessages;
+  ULONG MessageLEngth;
+  CHAR Data[1];
+} FILE_PIPE_PEEK_BUFFER, *PFILE_PIPE_PEEK_BUFFER;
 
 //https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/ns-wdm-_io_status_block
 typedef struct IO_STATUS_BLOCK {
@@ -19,6 +32,19 @@ typedef VOID (NTAPI *PIO_APC_ROUTINE)(
   PIO_STATUS_BLOCK IoStatusBlock,
   ULONG Reserved
 );
+
+typedef NTSTATUS (NTAPI* ntFsControlFile)(
+  HANDLE FileHandle,
+  HANDLE Event,
+  PIO_APC_ROUTINE ApcRoutine,
+  PVOID ApcContext,
+  PIO_STATUS_BLOCK IoStatusBlock,
+  ULONG FsControlCode,
+  PVOID InputBuffer,
+  ULONG InputBufferLength,
+  PVOID OutputBuffer,
+  ULONG OutputBufferLength
+); 
 
 //https://learn.microsoft.com/en-us/windows/win32/devnotes/ntreadfile
 //https://stackoverflow.com/questions/10822771/how-to-use-icmpsendecho2-with-pio-apc-routine

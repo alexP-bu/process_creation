@@ -27,6 +27,8 @@ int main(int argc, char** argv){
   FARPROC fpNtWaitForSingleObject = GetProcAddress(hNtdll, "NtWaitForSingleObject");
   FARPROC fpNtClose = GetProcAddress(hNtdll, "NtClose");
   FARPROC fpNtReadFile = GetProcAddress(hNtdll, "NtReadFile");
+  FARPROC fpNtFsControlFile = GetProcAddress(hNtdll, "NtFsControlFile");
+
   //cast functions to get our Nt function pointers
   ntAllocateVirtualMemory NtAllocateVirtualMemory = (ntAllocateVirtualMemory)fpNtAllocateVirtualMemory;
   ntFreeVirtualMemory NtFreeVirtualMemory = (ntFreeVirtualMemory)fpNtFreeVirtualMemory;
@@ -36,6 +38,7 @@ int main(int argc, char** argv){
   ntWaitForSingleObject NtWaitForSingleObject = (ntWaitForSingleObject)fpNtWaitForSingleObject;
   ntClose NtClose = (ntClose)fpNtClose;
   ntReadFile NtReadFile = (ntReadFile)fpNtReadFile; 
+  ntFsControlFile NtFsControlFile = (ntFsControlFile)fpNtFsControlFile;
 
   //get length of command line args
   SIZE_T dwArgsLen = 0;
@@ -169,12 +172,35 @@ int main(int argc, char** argv){
   while(NtWaitForSingleObject(pi.hProcess, TRUE, &liTimeout)){
     //reversed PeekNamedPipe:
     //PeekNamedPipe -> RtlAllocateHeap, ZwCreateEvent, ZwFsControlFile, RtlFreeHeap, NtClose
-    //I'm just going to use ZwFsControlFile with FSCTL_PIPE_PEEK
+    //We want ZwFsControlFile -> NtFsControlFile with FSCTL_PIPE_PEEK
     //https://learn.microsoft.com/en-us/openspecs/windows_protocols/ms-fscc/b6e51f60-a6df-4c2d-9b28-40092e816641
-    if(!PeekNamedPipe(hReadPipe, NULL, 0, NULL, &totBytes, NULL)){
-      printf("[!] Error peeking named pipe: %d\n", GetLastError());
+    IO_STATUS_BLOCK isbPeek;
+    FILE_PIPE_PEEK_BUFFER peekBuffer;
+    ntStatus = NtFsControlFile(
+      hReadPipe,
+      NULL,
+      NULL,
+      NULL,
+      &isbPeek,
+      FSCTL_PIPE_PEEK,
+      NULL,
+      0,
+      &peekBuffer,
+      sizeof(peekBuffer)
+    );
+    if(ntStatus == STATUS_PENDING){
+      ntStatus = NtWaitForSingleObject(hReadPipe, FALSE, NULL);
+      if(NT_SUCCESS(ntStatus)){
+        ntStatus = isbPeek.Status;
+      }
+    }
+    if(NT_SUCCESS(ntStatus)){
+      totBytes = peekBuffer.ReadDataAvailable;
+    }else{
+      printf("[!] Error peeking pipe: %x\n", ntStatus);
       return -1;
     }
+    //read the actual data
     while(totBytes > 0){
       ULONG numBytes = 0;
       ULONG bytesRead = 0;
@@ -204,6 +230,9 @@ int main(int argc, char** argv){
       }
       if(NT_SUCCESS(ntStatus)){
         bytesRead = isbRead.Information;
+      }else{
+        printf("[!] Error reading pipe: %x\n", ntStatus);
+        return -1;
       }
       ((PBYTE)pvBuffer)[bytesRead] = '\0';
       printf("%s", pvBuffer);
