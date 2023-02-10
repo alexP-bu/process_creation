@@ -28,7 +28,9 @@ int main(int argc, char** argv){
   FARPROC fpNtClose = GetProcAddress(hNtdll, "NtClose");
   FARPROC fpNtReadFile = GetProcAddress(hNtdll, "NtReadFile");
   FARPROC fpNtFsControlFile = GetProcAddress(hNtdll, "NtFsControlFile");
-
+  FARPROC fpNtCreateNamedPipeFile = GetProcAddress(hNtdll, "NtCreateNamedPipeFile");
+  FARPROC fpRtlInitUnicodeString = GetProcAddress(hNtdll, "RtlInitUnicodeString");
+  FARPROC fpNtOpenFile = GetProcAddress(hNtdll, "NtOpenFile");
   //cast functions to get our Nt function pointers
   ntAllocateVirtualMemory NtAllocateVirtualMemory = (ntAllocateVirtualMemory)fpNtAllocateVirtualMemory;
   ntFreeVirtualMemory NtFreeVirtualMemory = (ntFreeVirtualMemory)fpNtFreeVirtualMemory;
@@ -39,6 +41,9 @@ int main(int argc, char** argv){
   ntClose NtClose = (ntClose)fpNtClose;
   ntReadFile NtReadFile = (ntReadFile)fpNtReadFile; 
   ntFsControlFile NtFsControlFile = (ntFsControlFile)fpNtFsControlFile;
+  ntCreateNamedPipeFile NtCreateNamedPipeFile = (ntCreateNamedPipeFile)fpNtCreateNamedPipeFile;
+  rtlInitUnicodeString RtlInitUnicodeString = (rtlInitUnicodeString)fpRtlInitUnicodeString;
+  ntOpenFile NtOpenFile = (ntOpenFile)fpNtOpenFile;
 
   //get length of command line args
   SIZE_T dwArgsLen = 0;
@@ -73,26 +78,76 @@ int main(int argc, char** argv){
   sprintf((PBYTE)lpCommandLine + strlen(lpCommandLine), "%c", '\0');
   //printf("got command line: %s\nlen: %d\n", lpCommandLine, strlen(lpCommandLine)); //DEBUG
 
-  //create pipe
+  //create pipe!
+  //reversed CreatePipe -> NtCreateNamedPipeFile, NtOpenFile again
+  //setup help found at https://doxygen.reactos.org/df/d77/npipe_8c_source.html
   HANDLE hReadPipe;
   HANDLE hWritePipe;
-  SECURITY_ATTRIBUTES sa;
-  RtlZeroMemory(&sa, sizeof(sa));
-
-  //createpipe calls NtOpenFile and NtCreateNamedPipeFile then NtOpenFile again, 
-  //TODO need to keep reversing this
-  if(!CreatePipe(
+  UNICODE_STRING pipeName;
+  LARGE_INTEGER defaultTimeout;
+  ULONG attributes;
+  defaultTimeout.QuadPart = -1200000000;
+  //setup pipe name
+  WCHAR pipeNameBuffer[128];
+  LONG pipeId;
+  LONG ProcessPipeId;
+  pipeId = InterlockedIncrement(&ProcessPipeId);
+  struct _TEB* teb = NtCurrentTeb();
+  swprintf(
+    pipeNameBuffer, 
+    sizeof(pipeNameBuffer), 
+    L"\\Device\\NamedPipe\\Win32Pipes.%p.%08x", 
+    teb->Cid.UniqueProcess, pipeId
+  );
+  RtlInitUnicodeString(
+    &pipeName, 
+    pipeNameBuffer
+  );
+  //setup pipe object attributes
+  attributes = OBJ_CASE_INSENSITIVE;
+  OBJECT_ATTRIBUTES objectAttributes;
+  objectAttributes.Length = sizeof(OBJECT_ATTRIBUTES);
+  objectAttributes.RootDirectory = NULL;
+  objectAttributes.Attributes = attributes;
+  objectAttributes.ObjectName = &pipeName;
+  objectAttributes.SecurityDescriptor = NULL;
+  objectAttributes.SecurityQualityOfService = NULL;
+  IO_STATUS_BLOCK statusBlock;
+  ntStatus = NtCreateNamedPipeFile(
     &hReadPipe,
+    GENERIC_READ | FILE_WRITE_ATTRIBUTES | SYNCHRONIZE,
+    &objectAttributes,
+    &statusBlock,
+    FILE_SHARE_READ | FILE_SHARE_WRITE,
+    FILE_CREATE,
+    FILE_SYNCHRONOUS_IO_NONALERT,
+    FILE_PIPE_BYTE_STREAM_TYPE,
+    FILE_PIPE_BYTE_STREAM_MODE,
+    FILE_PIPE_QUEUE_OPERATION,
+    1,
+    BUFSIZE,
+    BUFSIZE,
+    &defaultTimeout
+  );
+  if(!NT_SUCCESS(ntStatus)){
+    printf("[!] Error creating named pipe file: %x\n", ntStatus);
+    return -1;
+  } 
+  ntStatus = NtOpenFile(
     &hWritePipe,
-    &sa,
-    BUFSIZE
-  )){
-    printf("[!] Error creating pipe: %d\n", GetLastError());
+    FILE_GENERIC_WRITE,
+    &objectAttributes,
+    &statusBlock,
+    FILE_SHARE_READ,
+    FILE_SYNCHRONOUS_IO_NONALERT | FILE_NON_DIRECTORY_FILE
+  );
+  if(!NT_SUCCESS(ntStatus)){
+    printf("[!] Error opening write pipe of file: %x\n", ntStatus);
     return -1;
   }
 
   //make sure only write end is inherited
-  //we can use ntqueryobject + ntsetinformationobject (reverse engineered sethandleinformation)
+  //we can use ntqueryobject + ntsetinformationobject (reversed sethandleinformation)
   OBJECT_HANDLE_ATTRIBUTE_INFORMATION ohai;
   OBJECT_INFORMATION_CLASS oic;
   ULONG ulBytesWritten = 0;
@@ -119,7 +174,7 @@ int main(int argc, char** argv){
     return -1;
   }
 
-  //CreateProcessA reverse engineering:
+  //CreateProcessA reversed:
   //CreateProcessA -> CreateProcessInternalA -> CreateProcessInternalW -> ZwCreateUserProcess -> NtCreateUserProcess
   //So, let's user NtCreateUserProcess to make it happen
   //https://captmeelo.com/redteam/maldev/2022/05/10/ntcreateuserprocess.html
@@ -209,7 +264,7 @@ int main(int argc, char** argv){
       }else{
         numBytes = totBytes;
       }
-      //reverse engineered: Readfile -> NtReadFile
+      //reversed: Readfile -> NtReadFile
       IO_STATUS_BLOCK isbRead; 
       ntStatus = NtReadFile(
         hReadPipe,
