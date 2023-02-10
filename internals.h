@@ -1,8 +1,40 @@
 #include <windows.h>
+//https://learn.microsoft.com/en-us/cpp/build/x64-calling-convention?view=msvc-170
 
 #define NT_SUCCESS(Status) (((NTSTATUS)(Status)) >= 0)
 #define NtCurrentProcess()((HANDLE)(LONG_PTR)-1)
 
+//https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/ns-wdm-_io_status_block
+typedef struct IO_STATUS_BLOCK {
+  union {
+    NTSTATUS Status;
+    PVOID Pointer;
+  };
+  ULONG_PTR Information;
+}IO_STATUS_BLOCK, *PIO_STATUS_BLOCK;
+
+//https://processhacker.sourceforge.io/doc/ntioapi_8h_source.html
+typedef VOID (NTAPI *PIO_APC_ROUTINE)(
+  PVOID ApcContext,
+  PIO_STATUS_BLOCK IoStatusBlock,
+  ULONG Reserved
+);
+
+//https://learn.microsoft.com/en-us/windows/win32/devnotes/ntreadfile
+//https://stackoverflow.com/questions/10822771/how-to-use-icmpsendecho2-with-pio-apc-routine
+typedef NTSTATUS (NTAPI* ntReadFile)(
+  HANDLE FileHandle,
+  HANDLE Event,
+  PIO_APC_ROUTINE ApcRoutine,
+  PVOID ApcContext,
+  PIO_STATUS_BLOCK IoStatusBlock,
+  PVOID Buffer,
+  ULONG Length,
+  PLARGE_INTEGER ByteOffset,
+  PULONG Key
+);
+
+//https://learn.microsoft.com/en-us/windows/win32/api/winternl/nf-winternl-ntclose
 typedef NTSTATUS (NTAPI* ntClose)(
   HANDLE Handle
 );
