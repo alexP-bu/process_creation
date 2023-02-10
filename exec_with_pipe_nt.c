@@ -33,6 +33,7 @@ int main(int argc, char** argv){
   FARPROC fpNtOpenFile = GetProcAddress(hNtdll, "NtOpenFile");
   FARPROC fpRtlCreateProcessParametersEx = GetProcAddress(hNtdll, "RtlCreateProcessParametersEx");
   FARPROC fpLdrUnloadDll = GetProcAddress(hNtdll, "LdrUnloadDll");
+  FARPROC fpRtlAllocateHeap = GetProcAddress(hNtdll, "RtlAllocateHeap");
   //cast functions to get our Nt function pointers
   ntAllocateVirtualMemory NtAllocateVirtualMemory = (ntAllocateVirtualMemory)fpNtAllocateVirtualMemory;
   ntFreeVirtualMemory NtFreeVirtualMemory = (ntFreeVirtualMemory)fpNtFreeVirtualMemory;
@@ -48,6 +49,7 @@ int main(int argc, char** argv){
   ntOpenFile NtOpenFile = (ntOpenFile)fpNtOpenFile;
   rtlCreateProcessParametersEx RtlCreateProcessParametersEx = (rtlCreateProcessParametersEx)fpRtlCreateProcessParametersEx;
   ldrUnloadDll LdrUnloadDll = (ldrUnloadDll)fpLdrUnloadDll;
+  rtlAllocateHeap RtlAllocateHeap = (rtlAllocateHeap)fpRtlAllocateHeap;
 
   //get length of command line args
   SIZE_T dwArgsLen = 0;
@@ -187,18 +189,32 @@ int main(int argc, char** argv){
   HANDLE hChildProcess = NULL;
   HANDLE hChildThread = NULL;
   //setup rtl user process params struct
-  RTL_USER_PROCESS_PARAMETERS rupp;
+  PRTL_USER_PROCESS_PARAMETERS rupp = NULL;
+  UNICODE_STRING ntImagePath;
+  RtlInitUnicodeString(&ntImagePath, (PWSTR)L"\\??\\C:\\Windows\\System32\\cmd.exe cmd /c ping 127.0.0.1");
+  RtlCreateProcessParametersEx(
+    &rupp, 
+    &ntImagePath, 
+    NULL, 
+    NULL, 
+    NULL, 
+    NULL,
+    NULL,
+    NULL,
+    NULL,
+    NULL,
+    RTL_USER_PROCESS_PARAMETERS_NORMALIZED
+  );
   //setup create info struct
-  PS_CREATE_INFO ci;
+  PS_CREATE_INFO ci = {0};
   ci.Size = sizeof(ci);
   ci.State = PsCreateInitialState;
   //setup attribute list
-  PS_ATTRIBUTE_LIST procAL;
-  RtlZeroMemory(&procAL, sizeof(PS_ATTRIBUTE_LIST));
-  procAL.TotalLength = sizeof(PS_ATTRIBUTE_LIST) - sizeof(PS_ATTRIBUTE);
-  procAL.Attributes[0].Attribute = PS_ATTRIBUTE_IMAGE_NAME;
-  procAL.Attributes[0].Size = NtImagePath.Length;
-  procAl.Attributes[0].Value = (ULONG_PTR)NtImagePath.Buffer;
+  PPS_ATTRIBUTE_LIST procAL = (PS_ATTRIBUTE_LIST*)RtlAllocateHeap(teb->Peb->ProcessHeap, HEAP_ZERO_MEMORY, sizeof(PS_ATTRIBUTE));
+  procAL->TotalLength = sizeof(PS_ATTRIBUTE_LIST) - sizeof(PS_ATTRIBUTE);
+  procAL->Attributes[0].Attribute = PS_ATTRIBUTE_IMAGE_NAME;
+  procAL->Attributes[0].Size = ntImagePath.Length;
+  procAL->Attributes[0].Value = (ULONG_PTR)ntImagePath.Buffer;
   ntStatus = NtCreateUserProcess(
     &hChildProcess,
     &hChildThread,
@@ -206,14 +222,14 @@ int main(int argc, char** argv){
     THREAD_ALL_ACCESS,
     NULL,
     NULL,
-    NULL,
-    NULL,
-    &rupp,
+    0,
+    0,
+    rupp,
     &ci,
-    &procAL
+    procAL
   );
   if(!NT_SUCCESS(ntStatus)){
-    printf("[!] Error creating user process %x\n", ntStatus);
+    printf("[!] Error creating user process: %x\n", ntStatus);
     return -1;
   }
   */
@@ -241,6 +257,7 @@ int main(int argc, char** argv){
     printf("[!] Error creating process: %d\n", GetLastError());
     return -1;
   }
+  
 
   //read from pipe
   PVOID pvBuffer = NULL;

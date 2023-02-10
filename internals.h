@@ -17,13 +17,47 @@
 #define FILE_PIPE_QUEUE_OPERATION 0x00000000
 #define FILE_NON_DIRECTORY_FILE 0x00000040
 //https://processhacker.sourceforge.io/doc/ntpsapi_8h_source.html
-//FUNCTION NEEDED:
-#define PsAttributeValue(Number, Thread, Input, Unknown) \
-  (((Number) & PS_ATTRIBUTE_NUMBER_MASK) | \
-  ((Thread) ? PS_ATTRIBUTE_THREAD : 0) | \
-  ((Input) ? PS_ATTRIBUTE_INPUT : 0) | \
-  ((Unknown) ? PS_ATTRIBUTE_UNKNOWN : 0))
+#define PS_ATTRIBUTE_NUMBER_MASK    0x0000ffff
+#define PS_ATTRIBUTE_THREAD         0x00010000 // Attribute may be used with thread creation
+#define PS_ATTRIBUTE_INPUT          0x00020000 // Attribute is input only
+#define PS_ATTRIBUTE_ADDITIVE       0x00040000 // Attribute may be "accumulated", e.g. bitmasks, counters, etc.
+typedef enum _PS_ATTRIBUTE_NUM{
+  PsAttributeParentProcess, // in HANDLE
+  PsAttributeDebugPort, // in HANDLE
+  PsAttributeToken, // in HANDLE
+  PsAttributeClientId, // out PCLIENT_ID
+  PsAttributeTebAddress, // out PTEB
+  PsAttributeImageName, // in PWSTR
+  PsAttributeImageInfo, // out PSECTION_IMAGE_INFORMATION
+  PsAttributeMemoryReserve, // in PPS_MEMORY_RESERVE
+  PsAttributePriorityClass, // in UCHAR
+  PsAttributeErrorMode, // in ULONG
+  PsAttributeStdHandleInfo, // in PPS_STD_HANDLE_INFO
+  PsAttributeHandleList, // in PHANDLE
+  PsAttributeGroupAffinity, // in PGROUP_AFFINITY
+  PsAttributePreferredNode, // in PUSHORT
+  PsAttributeIdealProcessor, // in PPROCESSOR_NUMBER
+  PsAttributeUmsThread, // see MSDN UpdateProceThreadAttributeList (CreateProcessW) - in PUMS_CREATE_THREAD_ATTRIBUTES
+  PsAttributeMitigationOptions, // in UCHAR
+  PsAttributeProtectionLevel, // in ULONG
+  PsAttributeSecureProcess, // since THRESHOLD (Virtual Secure Mode, Device Guard)
+  PsAttributeJobList,
+  PsAttributeChildProcessPolicy, // since THRESHOLD2
+  PsAttributeAllApplicationPackagesPolicy, // since REDSTONE
+  PsAttributeWin32kFilter,
+  PsAttributeSafeOpenPromptOriginClaim,
+  PsAttributeBnoIsolation,
+  PsAttributeDesktopAppPolicy,
+  PsAttributeMax
+} PS_ATTRIBUTE_NUM;
+//FUNCTION NEEDED FOR FLAGS:
+#define PsAttributeValue(Number, Thread, Input, Additive) \
+    (((Number) & PS_ATTRIBUTE_NUMBER_MASK) | \
+    ((Thread) ? PS_ATTRIBUTE_THREAD : 0) | \
+    ((Input) ? PS_ATTRIBUTE_INPUT : 0) | \
+    ((Additive) ? PS_ATTRIBUTE_ADDITIVE : 0))
 //PROCESS FLAGS:
+#define RTL_USER_PROCESS_PARAMETERS_NORMALIZED 0x01
 #define PROCESS_CREATE_FLAGS_BREAKAWAY 0x00000001 // NtCreateProcessEx & NtCreateUserProcess
 #define PROCESS_CREATE_FLAGS_NO_DEBUG_INHERIT 0x00000002 // NtCreateProcessEx & NtCreateUserProcess
 #define PROCESS_CREATE_FLAGS_INHERIT_HANDLES 0x00000004 // NtCreateProcessEx & NtCreateUserProcess
@@ -80,6 +114,12 @@
 #define PS_ATTRIBUTE_CHPE PsAttributeValue(PsAttributeChpe, FALSE, TRUE, TRUE)
 #define PS_ATTRIBUTE_MITIGATION_AUDIT_OPTIONS PsAttributeValue(PsAttributeMitigationAuditOptions, FALSE, TRUE, FALSE)
 #define PS_ATTRIBUTE_MACHINE_TYPE PsAttributeValue(PsAttributeMachineType, FALSE, TRUE, TRUE)
+
+typedef PVOID (NTAPI* rtlAllocateHeap)(
+  PVOID HeapHandle,
+  ULONG Flags,
+  SIZE_T Size
+);
 
 //https://learn.microsoft.com/en-us/windows/win32/api/subauth/ns-subauth-unicode_string
 typedef struct UNICODE_STRING{
