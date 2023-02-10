@@ -31,6 +31,8 @@ int main(int argc, char** argv){
   FARPROC fpNtCreateNamedPipeFile = GetProcAddress(hNtdll, "NtCreateNamedPipeFile");
   FARPROC fpRtlInitUnicodeString = GetProcAddress(hNtdll, "RtlInitUnicodeString");
   FARPROC fpNtOpenFile = GetProcAddress(hNtdll, "NtOpenFile");
+  FARPROC fpRtlCreateProcessParametersEx = GetProcAddress(hNtdll, "RtlCreateProcessParametersEx");
+  FARPROC fpLdrUnloadDll = GetProcAddress(hNtdll, "LdrUnloadDll");
   //cast functions to get our Nt function pointers
   ntAllocateVirtualMemory NtAllocateVirtualMemory = (ntAllocateVirtualMemory)fpNtAllocateVirtualMemory;
   ntFreeVirtualMemory NtFreeVirtualMemory = (ntFreeVirtualMemory)fpNtFreeVirtualMemory;
@@ -44,6 +46,8 @@ int main(int argc, char** argv){
   ntCreateNamedPipeFile NtCreateNamedPipeFile = (ntCreateNamedPipeFile)fpNtCreateNamedPipeFile;
   rtlInitUnicodeString RtlInitUnicodeString = (rtlInitUnicodeString)fpRtlInitUnicodeString;
   ntOpenFile NtOpenFile = (ntOpenFile)fpNtOpenFile;
+  rtlCreateProcessParametersEx RtlCreateProcessParametersEx = (rtlCreateProcessParametersEx)fpRtlCreateProcessParametersEx;
+  ldrUnloadDll LdrUnloadDll = (ldrUnloadDll)fpLdrUnloadDll;
 
   //get length of command line args
   SIZE_T dwArgsLen = 0;
@@ -179,6 +183,41 @@ int main(int argc, char** argv){
   //So, let's user NtCreateUserProcess to make it happen
   //https://captmeelo.com/redteam/maldev/2022/05/10/ntcreateuserprocess.html
   //TODO need to actually make it work lol
+  /*
+  HANDLE hChildProcess = NULL;
+  HANDLE hChildThread = NULL;
+  //setup rtl user process params struct
+  RTL_USER_PROCESS_PARAMETERS rupp;
+  //setup create info struct
+  PS_CREATE_INFO ci;
+  ci.Size = sizeof(ci);
+  ci.State = PsCreateInitialState;
+  //setup attribute list
+  PS_ATTRIBUTE_LIST procAL;
+  RtlZeroMemory(&procAL, sizeof(PS_ATTRIBUTE_LIST));
+  procAL.TotalLength = sizeof(PS_ATTRIBUTE_LIST) - sizeof(PS_ATTRIBUTE);
+  procAL.Attributes[0].Attribute = PS_ATTRIBUTE_IMAGE_NAME;
+  procAL.Attributes[0].Size = NtImagePath.Length;
+  procAl.Attributes[0].Value = (ULONG_PTR)NtImagePath.Buffer;
+  ntStatus = NtCreateUserProcess(
+    &hChildProcess,
+    &hChildThread,
+    PROCESS_ALL_ACCESS,
+    THREAD_ALL_ACCESS,
+    NULL,
+    NULL,
+    NULL,
+    NULL,
+    &rupp,
+    &ci,
+    &procAL
+  );
+  if(!NT_SUCCESS(ntStatus)){
+    printf("[!] Error creating user process %x\n", ntStatus);
+    return -1;
+  }
+  */
+  
   STARTUPINFO si;
   RtlZeroMemory(&si, sizeof(si));
   si.cb = sizeof(si);
@@ -319,7 +358,7 @@ int main(int argc, char** argv){
     MEM_RELEASE
   );
   if(!NT_SUCCESS(ntStatus)){
-    printf("[!] Error freeing commandline memory, %x\n", ntStatus);
+    printf("[!] Error freeing commandline memory: %x\n", ntStatus);
     return -1;
   }
   ntStatus = NtFreeVirtualMemory(
@@ -329,7 +368,12 @@ int main(int argc, char** argv){
     MEM_RELEASE
   );
   if(!NT_SUCCESS(ntStatus)){
-    printf("[!] Error freeing output buffer memory, %x\n", ntStatus);
+    printf("[!] Error freeing output buffer memory: %x\n", ntStatus);
+    return -1;
+  }
+  ntStatus = LdrUnloadDll(hNtdll);
+  if(!NT_SUCCESS(ntStatus)){
+    printf("[!] Error freeing library: %x\n", ntStatus);
     return -1;
   }
   return 0;
