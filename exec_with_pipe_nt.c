@@ -2,38 +2,6 @@
 #include <stdio.h>
 #define BUFSIZE 4096
 
-BOOL readFromPipe(HANDLE hReadPipe, PBYTE lpBuffer){
-  DWORD lpTotalBytesAvail = 0;
-  if(!PeekNamedPipe(
-    hReadPipe,
-    NULL,
-    0,
-    NULL,
-    &lpTotalBytesAvail,
-    NULL
-  )){
-    printf("[!] Error peeking pipe: %d\n", GetLastError());
-    return FALSE;
-  };
-  while(lpTotalBytesAvail > 0){
-    DWORD lpNumberOfBytesRead = 0;
-    if(!ReadFile(
-      hReadPipe,
-      lpBuffer,
-      BUFSIZE - 1,
-      &lpNumberOfBytesRead,
-      NULL
-    )){
-      printf("[!] Error reading contents of pipe: %d\n", GetLastError());
-      return FALSE;
-    };
-    lpBuffer[lpNumberOfBytesRead] = '\0';
-    printf("%s", lpBuffer);
-    lpTotalBytesAvail -= lpNumberOfBytesRead;
-  }
-  return TRUE;
-}
-
 int main(int argc, char** argv){
   
   //lets get ntdll and functions we need from it
@@ -49,18 +17,23 @@ int main(int argc, char** argv){
     printf("[!] Error loading ntdll: %d\n", GetLastError());
     return -1;
   }
+
   //get addresses from ntdll
   FARPROC fpNtAllocateVirtualMemory = GetProcAddress(hNtdll, "NtAllocateVirtualMemory");
   FARPROC fpNtFreeVirtualMemory = GetProcAddress(hNtdll, "NtFreeVirtualMemory");
   FARPROC fpNtQueryObject = GetProcAddress(hNtdll, "NtQueryObject");
   FARPROC fpNtSetInformationObject = GetProcAddress(hNtdll, "NtSetInformationObject");
   FARPROC fpNtCreateUserProcess = GetProcAddress(hNtdll, "NtCreateUserProcess");
+  FARPROC fpNtWaitForSingleObject = GetProcAddress(hNtdll, "NtWaitForSingleObject");
+  FARPROC fpNtClose = GetProcAddress(hNtdll, "NtClose");
   //cast functions to get our Nt function pointers
   ntAllocateVirtualMemory NtAllocateVirtualMemory = (ntAllocateVirtualMemory)fpNtAllocateVirtualMemory;
   ntFreeVirtualMemory NtFreeVirtualMemory = (ntFreeVirtualMemory)fpNtFreeVirtualMemory;
   ntQueryObject NtQueryObject = (ntQueryObject)fpNtQueryObject;
   ntSetInformationObject NtSetInformationObject = (ntSetInformationObject)fpNtSetInformationObject;
   ntCreateUserProcess NtCreateUserProcess = (ntCreateUserProcess)fpNtCreateUserProcess;
+  ntWaitForSingleObject NtWaitForSingleObject = (ntWaitForSingleObject)fpNtWaitForSingleObject;
+  ntClose NtClose = (ntClose)fpNtClose;
 
   //get length of command line args
   SIZE_T dwArgsLen = 0;
@@ -145,6 +118,7 @@ int main(int argc, char** argv){
   //CreateProcessA -> CreateProcessInternalA -> CreateProcessInternalW -> ZwCreateUserProcess -> NtCreateUserProcess
   //So, let's user NtCreateUserProcess to make it happen
   //https://captmeelo.com/redteam/maldev/2022/05/10/ntcreateuserprocess.html
+  //TODO need to actually make it work lol
   STARTUPINFO si;
   RtlZeroMemory(&si, sizeof(si));
   si.cb = sizeof(si);
@@ -170,11 +144,11 @@ int main(int argc, char** argv){
   }
 
   //read from pipe
-  PBYTE lpBuffer = NULL;
+  PVOID pvBuffer = NULL;
   SIZE_T stBufferSize = (SIZE_T)(sizeof(BYTE) * BUFSIZE);
   ntStatus = NtAllocateVirtualMemory(
     hProcess,
-    (PVOID)&lpBuffer,
+    &pvBuffer,
     0,
     &stBufferSize,
     MEM_COMMIT | MEM_RESERVE,
@@ -184,20 +158,52 @@ int main(int argc, char** argv){
     printf("[!] Error allocating virtual memory for output buffer: %x", ntStatus);
     return -1;
   }
-  while(WaitForSingleObject(pi.hProcess, 50)){
-    if(!readFromPipe(hReadPipe, lpBuffer)){
+
+  //reversed WaitForSingleObject:
+  //WaitForSingleObject -> WaitForSingleObjectEx -> ZwWaitForSingleObject -> NtWaitForSingleObject
+  LARGE_INTEGER liTimeout;
+  liTimeout.QuadPart = 50;
+  DWORD totBytes = 0;
+  while(NtWaitForSingleObject(pi.hProcess, TRUE, &liTimeout)){
+    if(!PeekNamedPipe(hReadPipe, NULL, 0, NULL, &totBytes, NULL)){
+      printf("[!] Error peeking named pipe: %d\n", GetLastError());
       return -1;
     }
+    while(totBytes > 0){
+      DWORD numBytes = 0;
+      DWORD bytesRead = 0;
+      if(totBytes > (BUFSIZE - 1)){
+        numBytes = BUFSIZE;
+      }else{
+        numBytes = totBytes;
+      } 
+      if(!ReadFile(hReadPipe, pvBuffer, numBytes, &bytesRead, NULL)){
+        printf("[!] Error reading data from pipe: %d\n", GetLastError());
+        return -1;
+      }
+      ((PBYTE)pvBuffer)[bytesRead] = '\0';
+      printf("%s", pvBuffer);
+      totBytes -= bytesRead;
+    }
   }
-  //print any remaining output
-  if(!readFromPipe(hReadPipe, lpBuffer)){
+
+  //cleanup
+  if(!NT_SUCCESS(NtClose(pi.hThread))){
+    printf("[!] Error closing thread handle..\n");
     return -1;
   }
-  //cleanup
-  CloseHandle(pi.hThread);
-  CloseHandle(pi.hProcess);
-  CloseHandle(hWritePipe);
-  CloseHandle(hReadPipe);
+  if(!NT_SUCCESS(NtClose(pi.hProcess))){
+    printf("[!] Error closing process handle..\n");
+    return -1;
+  }
+  if(!NT_SUCCESS(NtClose(hWritePipe))){
+    printf("[!] Error closing handle to write end of named pipe...\n");
+    return -1;
+  }
+  if(!NT_SUCCESS(NtClose(hReadPipe))){
+    printf("[!] Error closing handle to read end of named pipe...\n");
+    return -1;
+  }
   ntStatus = NtFreeVirtualMemory(
     hProcess,
     &lpCommandLine,
@@ -210,7 +216,7 @@ int main(int argc, char** argv){
   }
   ntStatus = NtFreeVirtualMemory(
     hProcess,
-    (PVOID)&lpBuffer,
+    &pvBuffer,
     &stBufferSize,
     MEM_RELEASE
   );

@@ -3,6 +3,17 @@
 #define NT_SUCCESS(Status) (((NTSTATUS)(Status)) >= 0)
 #define NtCurrentProcess()((HANDLE)(LONG_PTR)-1)
 
+typedef NTSTATUS (NTAPI* ntClose)(
+  HANDLE Handle
+);
+
+//https://learn.microsoft.com/en-us/windows/win32/api/winternl/nf-winternl-ntwaitforsingleobject
+typedef NTSTATUS (NTAPI* ntWaitForSingleObject)(
+  HANDLE Handle,
+  BOOLEAN Alertable,
+  PLARGE_INTEGER Timeout
+);
+
 //https://gitee.com/M2-Team/M2-SDK/blob/master/M2.Windows.h
 typedef struct PS_ATTRIBUTE{
 	ULONG_PTR Attribute;
