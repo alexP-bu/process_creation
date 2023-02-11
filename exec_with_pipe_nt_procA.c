@@ -52,8 +52,6 @@ int main(int argc, char** argv){
   rtlInitUnicodeString RtlInitUnicodeString = (rtlInitUnicodeString)fpRtlInitUnicodeString;
   ntOpenFile NtOpenFile = (ntOpenFile)fpNtOpenFile;
   ldrUnloadDll LdrUnloadDll = (ldrUnloadDll)fpLdrUnloadDll;
-  rtlInitAnsiStringEx RtlInitAnsiStringEx = (rtlInitAnsiStringEx)fpRtlInitAnsiStringEx;
-  rtlAnsiStringToUnicodeString RtlAnsiStringToUnicodeString = (rtlAnsiStringToUnicodeString)fpRtlAnsiStringToUnicodeString;
 
   //kernel32.dll functions for createprocess
   FARPROC fpCreateProcessInternalA = GetProcAddress(hKernel32, "CreateProcessInternalA");
@@ -195,8 +193,8 @@ int main(int argc, char** argv){
   //TODO working on a way to do this with NtCreateUserProcess
   //setup:
   STARTUPINFOA si;
-  si.cb = sizeof(si);
   RtlZeroMemory(&si, sizeof(si));
+  si.cb = sizeof(si);
   si.hStdOutput = hWritePipe;
   si.hStdError = hWritePipe;
   si.dwFlags = STARTF_USESTDHANDLES;
@@ -210,21 +208,42 @@ int main(int argc, char** argv){
   }
   */
   //second step: CreateProccessInternalA call:
-  if(!CreateProcessInternalA(NULL, NULL, lpCommandLine, NULL, NULL, TRUE, 0, NULL, NULL, &si, &pi, NULL)){
+  if(!CreateProcessInternalA(
+    NULL, 
+    NULL, 
+    lpCommandLine, 
+    NULL, 
+    NULL, TRUE, 
+    0, NULL, 
+    NULL, 
+    &si, 
+    &pi, 
+    NULL
+  )){
     printf("[!] Error creating process: %d\n", GetLastError);
     return -1;
   }
   //third step: CreateProcessInternalW call (unicode function):
   /*
-  STARTUPINFOW sw;
+  STARTUPINFOW sw; //need to fix?
+  RtlZeroMemory(&sw, sizeof(sw));
+  sw.cb = sizeof(sw);
+  sw.hStdOutput = hWritePipe;
+  sw.hStdError = hWritePipe;
+  sw.dwFlags = STARTF_USESTDHANDLES;
+  UNICODE_STRING usCommandLine;
+  RtlInitUnicodeString(
+    &usCommandLine,
+    lpCommandLine
+  );
   if(!CreateProcessInternalW(
     NULL,
     NULL,
-    L"cmd /c ping 127.0.0.1",
+    &usCommandLine,
     NULL,
     NULL,
     TRUE,
-    0x00007FF600000000,
+    0,
     NULL,
     NULL,
     &sw,
@@ -235,6 +254,7 @@ int main(int argc, char** argv){
     return -1;
   };
   */
+  
 
   //read from pipe
   PVOID pvBuffer = NULL;
