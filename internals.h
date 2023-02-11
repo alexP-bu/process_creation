@@ -39,6 +39,7 @@ typedef struct _PS_STD_HANDLE_INFO{
 	};
 	ULONG StdHandleSubsystemType;
 } PS_STD_HANDLE_INFO, * PPS_STD_HANDLE_INFO;
+
 typedef struct _SECTION_IMAGE_INFORMATION {
 	PVOID TransferAddress; // Entry point
 	ULONG ZeroBits;
@@ -188,12 +189,55 @@ typedef struct UNICODE_STRING{
   PWSTR Buffer;
 } UNICODE_STRING, *PUNICODE_STRING;
 
+typedef struct _CURDIR{
+	UNICODE_STRING DosPath;
+	HANDLE Handle;
+} CURDIR, * PCURDIR;
+
+typedef struct _RTL_DRIVE_LETTER_CURDIR{
+	USHORT Flags;
+	USHORT Length;
+	ULONG TimeStamp;
+	UNICODE_STRING DosPath;
+} RTL_DRIVE_LETTER_CURDIR, * PRTL_DRIVE_LETTER_CURDIR;
+
+#define RTL_MAX_DRIVE_LETTERS 32
+
 //https://learn.microsoft.com/en-us/windows/win32/api/winternl/ns-winternl-rtl_user_process_parameters
 typedef struct RTL_USER_PROCESS_PARAMETERS {
-  BYTE Reserved1[16];
-  PVOID Reserved2[10];
-  UNICODE_STRING ImagePathName;
-  UNICODE_STRING CommandLine;
+	ULONG MaximumLength;
+	ULONG Length;
+	ULONG Flags;
+	ULONG DebugFlags;
+	HANDLE ConsoleHandle;
+	ULONG ConsoleFlags;
+	HANDLE StandardInput;
+	HANDLE StandardOutput;
+	HANDLE StandardError;
+	CURDIR CurrentDirectory;
+	UNICODE_STRING DllPath;
+	UNICODE_STRING ImagePathName;
+	UNICODE_STRING CommandLine;
+	PWCHAR Environment;
+	ULONG StartingX;
+	ULONG StartingY;
+	ULONG CountX;
+	ULONG CountY;
+	ULONG CountCharsX;
+	ULONG CountCharsY;
+	ULONG FillAttribute;
+	ULONG WindowFlags;
+	ULONG ShowWindowFlags;
+	UNICODE_STRING WindowTitle;
+	UNICODE_STRING DesktopInfo;
+	UNICODE_STRING ShellInfo;
+	UNICODE_STRING RuntimeData;
+	RTL_DRIVE_LETTER_CURDIR CurrentDirectories[RTL_MAX_DRIVE_LETTERS];
+	ULONG_PTR EnvironmentSize;
+	ULONG_PTR EnvironmentVersion;
+	PVOID PackageDependencyData;
+	ULONG ProcessGroupId;
+	ULONG LoaderThreads;
 } RTL_USER_PROCESS_PARAMETERS, *PRTL_USER_PROCESS_PARAMETERS;
 
 typedef NTSTATUS (NTAPI* rtlCreateProcessParametersEx)(

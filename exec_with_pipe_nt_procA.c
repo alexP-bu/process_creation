@@ -182,6 +182,7 @@ int main(int argc, char** argv){
 
   //CreateProcessA reversed:
   //CreateProcessA -> CreateProcessInternalA -> CreateProcessInternalW -> ZwCreateUserProcess -> NtCreateUserProcess
+  //TODO working on a way to do this with NtCreateUserProcess but its NOT EASY
   STARTUPINFO si;
   RtlZeroMemory(&si, sizeof(si));
   si.cb = sizeof(si);
@@ -206,7 +207,6 @@ int main(int argc, char** argv){
     return -1;
   }
   
-
   //read from pipe
   PVOID pvBuffer = NULL;
   SIZE_T stBufferSize = (SIZE_T)(sizeof(BYTE) * BUFSIZE);
