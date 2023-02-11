@@ -22,7 +22,7 @@ int main(int argc, char **argv){
 
 	// Path to the image file from which the process will be created
 	UNICODE_STRING NtImagePath;
-	RtlInitUnicodeString(&NtImagePath, (PWSTR)L"C:\\Windows\\System32\\notepad.exe");
+	RtlInitUnicodeString(&NtImagePath, (PWSTR)L"\\??\\C:\\Windows\\System32\\calc.exe");
 
 	// Create the process parameters
 	PRTL_USER_PROCESS_PARAMETERS ProcessParameters = NULL;
