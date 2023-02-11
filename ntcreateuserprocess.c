@@ -21,7 +21,7 @@ int main(int argc, char **argv){
   FARPROC pRtlCreateProcessParametersEx = GetProcAddress(hNtdll, "RtlCreateProcessParametersEx");
   FARPROC pRtlAllocateHeap = GetProcAddress(hNtdll, "RtlAllocateHeap");
   FARPROC pRtlFreeHeap = GetProcAddress(hNtdll, "RtlFreeHeap");
-
+	
   //cast function addresses to function pointers
   ntCreateUserProcess NtCreateUserProcess = (ntCreateUserProcess)pNtCreateUserProcess;
   rtlInitUnicodeString RtlInitUnicodeString = (rtlInitUnicodeString)pRtlInitUnicodeString;
