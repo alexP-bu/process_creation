@@ -210,40 +210,21 @@ int main(int argc, char** argv){
   }
   */
   //second step: CreateProccessInternalA call:
-  /*
   if(!CreateProcessInternalA(NULL, NULL, lpCommandLine, NULL, NULL, TRUE, 0, NULL, NULL, &si, &pi, NULL)){
     printf("[!] Error creating process: %d\n", GetLastError);
     return -1;
   }
-  */
   //third step: CreateProcessInternalW call (unicode function):
-  UNICODE_STRING usCommandLine;
+  /*
   STARTUPINFOW sw;
-  RtlMoveMemory(&sw, &si, sizeof(STARTUPINFOA));
-  //for the commandline, RtlInitAnsiStringEx is called, then RtlAnsiStringToUnicodeString
-  ANSI_STRING asCmdLine;
-  ntStatus = RtlInitAnsiStringEx(&asCmdLine, lpCommandLine);
-  if(!NT_SUCCESS(ntStatus)){
-    printf("Error initializing ansi string: %x\n", ntStatus);
-    return -1;
-  }
-  ntStatus = RtlAnsiStringToUnicodeString(
-    &usCommandLine,
-    &asCmdLine,
-    TRUE
-  );
-  if(!NT_SUCCESS(ntStatus)){
-    printf("[!] Error initializing ansi string to unicode string: %x\n", ntStatus);
-    return -1;
-  }
   if(!CreateProcessInternalW(
     NULL,
     NULL,
-    &usCommandLine,
+    L"cmd /c ping 127.0.0.1",
     NULL,
     NULL,
     TRUE,
-    0,
+    0x00007FF600000000,
     NULL,
     NULL,
     &sw,
@@ -253,6 +234,7 @@ int main(int argc, char** argv){
     printf("[!] Error creating process: %d\n", GetLastError());
     return -1;
   };
+  */
 
   //read from pipe
   PVOID pvBuffer = NULL;
