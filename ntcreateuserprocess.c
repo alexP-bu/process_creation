@@ -84,8 +84,8 @@ int main(int argc, char **argv){
 	}
 	// Create the process
 	HANDLE hProcess = NULL, hThread = NULL;
-  NTSTATUS status =
-	NtCreateUserProcess(
+  NTSTATUS status;
+	status = NtCreateUserProcess(
 		&hProcess, 
 		&hThread, 
 		PROCESS_ALL_ACCESS, 
