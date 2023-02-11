@@ -294,7 +294,7 @@ int main(int argc, char** argv){
         return -1;
       }
       ((PBYTE)pvBuffer)[bytesRead] = '\0';
-      printf("%s", pvBuffer);
+      printf("%s", pvBuffer); //THIS IS THE OUTPUT RIGHT HERE
       totBytes -= bytesRead;
     }
   }
