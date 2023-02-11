@@ -176,18 +176,69 @@ typedef enum _PS_ATTRIBUTE_NUM{
 #define PS_ATTRIBUTE_MITIGATION_AUDIT_OPTIONS PsAttributeValue(PsAttributeMitigationAuditOptions, FALSE, TRUE, FALSE)
 #define PS_ATTRIBUTE_MACHINE_TYPE PsAttributeValue(PsAttributeMachineType, FALSE, TRUE, TRUE)
 
-typedef PVOID (NTAPI* rtlAllocateHeap)(
-  PVOID HeapHandle,
-  ULONG Flags,
-  SIZE_T Size
-);
-
 //https://learn.microsoft.com/en-us/windows/win32/api/subauth/ns-subauth-unicode_string
 typedef struct UNICODE_STRING{
   USHORT Length;
   USHORT MaximumLength;
   PWSTR Buffer;
 } UNICODE_STRING, *PUNICODE_STRING;
+
+//https://learn.microsoft.com/en-us/windows/win32/api/ntdef/ns-ntdef-string
+typedef struct ANSI_STRING {
+  USHORT Length;
+  USHORT MaximumLength;
+  PCHAR  Buffer;
+} ANSI_STRING, *PANSI_STRING;
+
+//https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nf-wdm-rtlansistringtounicodestring
+typedef NTSTATUS (NTAPI* rtlAnsiStringToUnicodeString)(
+  PUNICODE_STRING DestinationString,
+  PANSI_STRING SourceString,
+  BOOLEAN AllocateDestinationString
+);
+
+//https://source.winehq.org/WineAPI/RtlInitAnsiStringEx.html
+typedef CONST char* PCSZ;
+typedef NTSTATUS (NTAPI* rtlInitAnsiStringEx)(
+  PANSI_STRING target,
+  PCSZ source
+);
+
+typedef BOOL (WINAPI* createProcessInternalW)(
+  HANDLE hUserToken,
+  LPCWSTR lpApplicationName,
+  LPWSTR lpCommandLine,
+  LPSECURITY_ATTRIBUTES lpProcessAttributes,
+  LPSECURITY_ATTRIBUTES lpThreadAttributes,
+  BOOL bInheritHandles,
+  DWORD dwCreationFlags,
+  LPVOID lpEnvironment,
+  LPCWSTR lpCurrentDirectory,
+  LPSTARTUPINFOW lpStartupInfo,
+  LPPROCESS_INFORMATION lpProcessInformation,
+  PHANDLE hNewToken
+);
+
+typedef BOOL (WINAPI* createProcessInternalA)(
+  HANDLE hToken,
+  LPCSTR lpApplicationName,
+  LPSTR lpCommandLine,
+  LPSECURITY_ATTRIBUTES lpProcessAttributes,
+  LPSECURITY_ATTRIBUTES lpThreadAttributes,
+  BOOL bInheritHandles,
+  DWORD dwCreationFlags,
+  LPVOID lpEnvironment,
+  LPCSTR lpCurrentDirectory,
+  LPSTARTUPINFOA lpStartupInfo,
+  LPPROCESS_INFORMATION lpProcessInformation,
+  PHANDLE hNewToken
+);
+
+typedef PVOID (NTAPI* rtlAllocateHeap)(
+  PVOID HeapHandle,
+  ULONG Flags,
+  SIZE_T Size
+);
 
 typedef struct _CURDIR{
 	UNICODE_STRING DosPath;

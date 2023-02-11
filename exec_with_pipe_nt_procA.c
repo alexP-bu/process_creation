@@ -4,7 +4,7 @@
 
 int main(int argc, char** argv){
   
-  //lets get ntdll and functions we need from it
+  //lets get ntdll / kernel32 and functions we need from it
   HANDLE hProcess = NULL;
   hProcess = NtCurrentProcess();
   if(!hProcess){
@@ -12,9 +12,15 @@ int main(int argc, char** argv){
     return -1;
   }
   HMODULE hNtdll = NULL;
-  hNtdll = LoadLibraryA("ntdll");
+  hNtdll = GetModuleHandleA("Ntdll.dll");
   if(!hNtdll){
-    printf("[!] Error loading ntdll: %d\n", GetLastError());
+    printf("[!] Error loading Ntdll.dll: %d\n", GetLastError());
+    return -1;
+  }
+  HMODULE hKernel32 = NULL;
+  hKernel32 = GetModuleHandleA("Kernel32.dll");
+  if(!hKernel32){
+    printf("[!] Error loading kernel32.dll %d\n", GetLastError());
     return -1;
   }
 
@@ -23,7 +29,6 @@ int main(int argc, char** argv){
   FARPROC fpNtFreeVirtualMemory = GetProcAddress(hNtdll, "NtFreeVirtualMemory");
   FARPROC fpNtQueryObject = GetProcAddress(hNtdll, "NtQueryObject");
   FARPROC fpNtSetInformationObject = GetProcAddress(hNtdll, "NtSetInformationObject");
-  FARPROC fpNtCreateUserProcess = GetProcAddress(hNtdll, "NtCreateUserProcess");
   FARPROC fpNtWaitForSingleObject = GetProcAddress(hNtdll, "NtWaitForSingleObject");
   FARPROC fpNtClose = GetProcAddress(hNtdll, "NtClose");
   FARPROC fpNtReadFile = GetProcAddress(hNtdll, "NtReadFile");
@@ -31,15 +36,14 @@ int main(int argc, char** argv){
   FARPROC fpNtCreateNamedPipeFile = GetProcAddress(hNtdll, "NtCreateNamedPipeFile");
   FARPROC fpRtlInitUnicodeString = GetProcAddress(hNtdll, "RtlInitUnicodeString");
   FARPROC fpNtOpenFile = GetProcAddress(hNtdll, "NtOpenFile");
-  FARPROC fpRtlCreateProcessParametersEx = GetProcAddress(hNtdll, "RtlCreateProcessParametersEx");
   FARPROC fpLdrUnloadDll = GetProcAddress(hNtdll, "LdrUnloadDll");
-  FARPROC fpRtlAllocateHeap = GetProcAddress(hNtdll, "RtlAllocateHeap");
+  FARPROC fpRtlInitAnsiStringEx = GetProcAddress(hNtdll, "RtlInitAnsiStringEx");
+  FARPROC fpRtlAnsiStringToUnicodeString = GetProcAddress(hNtdll, "RtlAnsiStringToUnicodeString");
   //cast functions to get our Nt function pointers
   ntAllocateVirtualMemory NtAllocateVirtualMemory = (ntAllocateVirtualMemory)fpNtAllocateVirtualMemory;
   ntFreeVirtualMemory NtFreeVirtualMemory = (ntFreeVirtualMemory)fpNtFreeVirtualMemory;
   ntQueryObject NtQueryObject = (ntQueryObject)fpNtQueryObject;
   ntSetInformationObject NtSetInformationObject = (ntSetInformationObject)fpNtSetInformationObject;
-  ntCreateUserProcess NtCreateUserProcess = (ntCreateUserProcess)fpNtCreateUserProcess;
   ntWaitForSingleObject NtWaitForSingleObject = (ntWaitForSingleObject)fpNtWaitForSingleObject;
   ntClose NtClose = (ntClose)fpNtClose;
   ntReadFile NtReadFile = (ntReadFile)fpNtReadFile; 
@@ -47,9 +51,15 @@ int main(int argc, char** argv){
   ntCreateNamedPipeFile NtCreateNamedPipeFile = (ntCreateNamedPipeFile)fpNtCreateNamedPipeFile;
   rtlInitUnicodeString RtlInitUnicodeString = (rtlInitUnicodeString)fpRtlInitUnicodeString;
   ntOpenFile NtOpenFile = (ntOpenFile)fpNtOpenFile;
-  rtlCreateProcessParametersEx RtlCreateProcessParametersEx = (rtlCreateProcessParametersEx)fpRtlCreateProcessParametersEx;
   ldrUnloadDll LdrUnloadDll = (ldrUnloadDll)fpLdrUnloadDll;
-  rtlAllocateHeap RtlAllocateHeap = (rtlAllocateHeap)fpRtlAllocateHeap;
+  rtlInitAnsiStringEx RtlInitAnsiStringEx = (rtlInitAnsiStringEx)fpRtlInitAnsiStringEx;
+  rtlAnsiStringToUnicodeString RtlAnsiStringToUnicodeString = (rtlAnsiStringToUnicodeString)fpRtlAnsiStringToUnicodeString;
+
+  //kernel32.dll functions for createprocess
+  FARPROC fpCreateProcessInternalA = GetProcAddress(hKernel32, "CreateProcessInternalA");
+  FARPROC fpCreateProcessInternalW = GetProcAddress(hKernel32, "CreateProcessInternalW");
+  createProcessInternalA CreateProcessInternalA = (createProcessInternalA)fpCreateProcessInternalA;
+  createProcessInternalW CreateProcessInternalW = (createProcessInternalW)fpCreateProcessInternalW;
 
   //get length of command line args
   SIZE_T dwArgsLen = 0;
@@ -182,32 +192,68 @@ int main(int argc, char** argv){
 
   //CreateProcessA reversed:
   //CreateProcessA -> CreateProcessInternalA -> CreateProcessInternalW -> ZwCreateUserProcess -> NtCreateUserProcess
-  //TODO working on a way to do this with NtCreateUserProcess but its NOT EASY MAN
-  //this gonna take alot of reverse engineering
-  STARTUPINFO si;
-  RtlZeroMemory(&si, sizeof(si));
+  //TODO working on a way to do this with NtCreateUserProcess
+  //setup:
+  STARTUPINFOA si;
   si.cb = sizeof(si);
+  RtlZeroMemory(&si, sizeof(si));
   si.hStdOutput = hWritePipe;
   si.hStdError = hWritePipe;
   si.dwFlags = STARTF_USESTDHANDLES;
   PROCESS_INFORMATION pi;
   RtlZeroMemory(&pi, sizeof(pi));
-  if(!CreateProcessA(
+  //first step: CreateProccessA call:
+  /*
+  if(!CreateProcessA(NULL, lpCommandLine, NULL, NULL, TRUE, 0, NULL, NULL, &si, &pi)){
+    printf("[!] Error creating process: %d\n", GetLastError());
+    return -1;
+  }
+  */
+  //second step: CreateProccessInternalA call:
+  /*
+  if(!CreateProcessInternalA(NULL, NULL, lpCommandLine, NULL, NULL, TRUE, 0, NULL, NULL, &si, &pi, NULL)){
+    printf("[!] Error creating process: %d\n", GetLastError);
+    return -1;
+  }
+  */
+  //third step: CreateProcessInternalW call (unicode function):
+  UNICODE_STRING usCommandLine;
+  STARTUPINFOW sw;
+  RtlMoveMemory(&sw, &si, sizeof(STARTUPINFOA));
+  //for the commandline, RtlInitAnsiStringEx is called, then RtlAnsiStringToUnicodeString
+  ANSI_STRING asCmdLine;
+  ntStatus = RtlInitAnsiStringEx(&asCmdLine, lpCommandLine);
+  if(!NT_SUCCESS(ntStatus)){
+    printf("Error initializing ansi string: %x\n", ntStatus);
+    return -1;
+  }
+  ntStatus = RtlAnsiStringToUnicodeString(
+    &usCommandLine,
+    &asCmdLine,
+    TRUE
+  );
+  if(!NT_SUCCESS(ntStatus)){
+    printf("[!] Error initializing ansi string to unicode string: %x\n", ntStatus);
+    return -1;
+  }
+  if(!CreateProcessInternalW(
     NULL,
-    lpCommandLine,
+    NULL,
+    &usCommandLine,
     NULL,
     NULL,
     TRUE,
     0,
     NULL,
     NULL,
-    &si,
-    &pi
+    &sw,
+    &pi,
+    NULL
   )){
     printf("[!] Error creating process: %d\n", GetLastError());
     return -1;
-  }
-  
+  };
+
   //read from pipe
   PVOID pvBuffer = NULL;
   SIZE_T stBufferSize = (SIZE_T)(sizeof(BYTE) * BUFSIZE);
