@@ -1,6 +1,7 @@
 #include <windows.h>
 //https://learn.microsoft.com/en-us/cpp/build/x64-calling-convention?view=msvc-170
 
+#define PROCESS_CREATION_MITIGATION_POLICY_BLOCK_NON_MICROSOFT_BINARIES_ALWAYS_ON (0x00000001ull << 44)
 #define NT_SUCCESS(Status) (((NTSTATUS)(Status)) >= 0)
 #define NtCurrentProcess()((HANDLE)(LONG_PTR)-1)
 //https://doxygen.reactos.org/db/dc9/nt__native_8h.html#a0b49a0e798655827cb960ec9e6059538
@@ -21,6 +22,65 @@
 #define PS_ATTRIBUTE_THREAD         0x00010000 // Attribute may be used with thread creation
 #define PS_ATTRIBUTE_INPUT          0x00020000 // Attribute is input only
 #define PS_ATTRIBUTE_ADDITIVE       0x00040000 // Attribute may be "accumulated", e.g. bitmasks, counters, etc.
+//https://github.com/BlackOfWorld/NtCreateUserProcess/blob/ee9e963b9542722c2fec4c1c874c0ac84c8c9bdf/imports.h
+typedef enum _PS_IFEO_KEY_STATE{
+		PsReadIFEOAllValues,
+		PsSkipIFEODebugger,
+		PsSkipAllIFEO,
+		PsMaxIFEOKeyStates
+} PS_IFEO_KEY_STATE, * PPS_IFEO_KEY_STATE;
+typedef struct _PS_STD_HANDLE_INFO{
+	union{
+		ULONG Flags;
+		struct{
+			ULONG StdHandleState : 2; // PS_STD_HANDLE_STATE
+			ULONG PseudoHandleMask : 3; // PS_STD_*
+		} s;
+	};
+	ULONG StdHandleSubsystemType;
+} PS_STD_HANDLE_INFO, * PPS_STD_HANDLE_INFO;
+typedef struct _SECTION_IMAGE_INFORMATION {
+	PVOID TransferAddress; // Entry point
+	ULONG ZeroBits;
+	SIZE_T MaximumStackSize;
+	SIZE_T CommittedStackSize;
+	ULONG SubSystemType;
+	union{
+		struct{
+			USHORT SubSystemMinorVersion;
+			USHORT SubSystemMajorVersion;
+		} s1;
+		ULONG SubSystemVersion;
+	} u1;
+	union{
+		struct{
+			USHORT MajorOperatingSystemVersion;
+			USHORT MinorOperatingSystemVersion;
+		} s2;
+		ULONG OperatingSystemVersion;
+	} u2;
+	USHORT ImageCharacteristics;
+	USHORT DllCharacteristics;
+	USHORT Machine;
+	BOOLEAN ImageContainsCode;
+	union{
+		UCHAR ImageFlags;
+		struct{
+			UCHAR ComPlusNativeReady : 1;
+			UCHAR ComPlusILOnly : 1;
+			UCHAR ImageDynamicallyRelocated : 1;
+			UCHAR ImageMappedFlat : 1;
+			UCHAR BaseBelow4gb : 1;
+			UCHAR ComPlusPrefer32bit : 1;
+			UCHAR Reserved : 2;
+		} s3;
+	} u3;
+	ULONG LoaderFlags;
+	ULONG ImageFileSize;
+	ULONG CheckSum;
+} SECTION_IMAGE_INFORMATION, * PSECTION_IMAGE_INFORMATION;
+
+
 typedef enum _PS_ATTRIBUTE_NUM{
   PsAttributeParentProcess, // in HANDLE
   PsAttributeDebugPort, // in HANDLE
@@ -429,7 +489,7 @@ typedef struct PS_ATTRIBUTE{
 //https://gitee.com/M2-Team/M2-SDK/blob/master/M2.Windows.h
 typedef struct PS_ATTRIBUTE_LIST{
   SIZE_T TotalLength;
-  PS_ATTRIBUTE Attributes[1];
+  PS_ATTRIBUTE Attributes[6];
 } PS_ATTRIBUTE_LIST, *PPS_ATTRIBUTE_LIST;
 
 //https://www.vergiliusproject.com/kernels/x64/Windows%208%20%7C%202012/RTM/PS_CREATE_STATE
@@ -447,59 +507,65 @@ typedef enum PS_CREATE_STATE{
 //https://www.geoffchappell.com/studies/windows/km/ntoskrnl/inc/api/ntpsapi/ps_create_info/index.htm
 //https://www.geoffchappell.com/studies/windows/km/ntoskrnl/inc/api/ntpsapi/ps_create_info/initflags.htm
 //this one is weird man
-typedef struct PS_CREATE_INFO{
-  ULONG_PTR Size;
-  PS_CREATE_STATE State;
-  union {
-    struct{
-      union {
-        ULONG InitFlags;
-        struct{
-          UCHAR WriteOutputOnExit : 1;
-          UCHAR DetectManifest : 1;
-          UCHAR IFEOSkipDebugger : 1;
-          UCHAR IFEODoNotPropagateKeyState : 1;
-          UCHAR SpareBits1 : 4; //used later version
-          UCHAR IFEOKeyState : 2;
-          UCHAR SpareBits2 : 8; //used later version
-          USHORT ProhibitedImageCharacteristics : 16;
-        };
-        ACCESS_MASK AdditionalFileAccess;
-      };
-    } InitState;
-    struct{
-      HANDLE FileHandle;
-    } FailSection;
-    struct {
-      USHORT DllCharacteristics;
-    } ExeFormat;
-    struct {
-      HANDLE IFEOKey;
-    } ExeName;
-    struct {
-      union {
-        UCHAR ProtectedProcess : 1;
-        UCHAR AddressSpaceOverride : 1;
-        UCHAR DevOverrideEnabled : 1;
-        UCHAR ManifestDetected : 1;
-        UCHAR ProtectedProcessLight : 1;
-        UCHAR SpareBits1 : 3; //used later version
-        UCHAR SpareBits2 : 8;
-        USHORT SpareBits3 : 16;
-      };
-      HANDLE FileHandle;
-      HANDLE SectionHandle;
-      ULONGLONG UserProcessParameters;
-      ULONG UserProcessParametersNative;
-      ULONG UserProcessParamtersWow64;
-      ULONG CurrentParameterFlags;
-      ULONGLONG PebAddressNative;
-      ULONG PebAddressWow64;
-      ULONGLONG ManifestAddress;
-      ULONG ManifestSize;
-    } SuccessState;
-  };
-} PS_CREATE_INFO, *PPS_CREATE_INFO;
+typedef struct _PS_CREATE_INFO{
+	SIZE_T Size;
+	PS_CREATE_STATE State;
+	union{
+		// PsCreateInitialState
+		struct{
+			union{
+				ULONG InitFlags;
+				struct{
+					UCHAR WriteOutputOnExit : 1;
+					UCHAR DetectManifest : 1;
+					UCHAR IFEOSkipDebugger : 1;
+					UCHAR IFEODoNotPropagateKeyState : 1;
+					UCHAR SpareBits1 : 4;
+					UCHAR SpareBits2 : 8;
+					USHORT ProhibitedImageCharacteristics : 16;
+				} s1;
+			} u1;
+			ACCESS_MASK AdditionalFileAccess;
+		} InitState;
+		// PsCreateFailOnSectionCreate
+		struct{
+			HANDLE FileHandle;
+		} FailSection;
+		// PsCreateFailExeFormat
+		struct{
+			USHORT DllCharacteristics;
+		} ExeFormat;
+		// PsCreateFailExeName
+		struct{
+			HANDLE IFEOKey;
+		} ExeName;
+		// PsCreateSuccess
+		struct{
+			union{
+				ULONG OutputFlags;
+				struct{
+					UCHAR ProtectedProcess : 1;
+					UCHAR AddressSpaceOverride : 1;
+					UCHAR DevOverrideEnabled : 1; // From Image File Execution Options
+					UCHAR ManifestDetected : 1;
+					UCHAR ProtectedProcessLight : 1;
+					UCHAR SpareBits1 : 3;
+					UCHAR SpareBits2 : 8;
+					USHORT SpareBits3 : 16;
+				} s2;
+			} u2;
+			HANDLE FileHandle;
+			HANDLE SectionHandle;
+			ULONGLONG UserProcessParametersNative;
+			ULONG UserProcessParametersWow64;
+			ULONG CurrentParameterFlags;
+			ULONGLONG PebAddressNative;
+			ULONG PebAddressWow64;
+			ULONGLONG ManifestAddress;
+			ULONG ManifestSize;
+		} SuccessState;
+	};
+} PS_CREATE_INFO, * PPS_CREATE_INFO;
 
 //https://captmeelo.com/redteam/maldev/2022/05/10/ntcreateuserprocess.html
 typedef NTSTATUS (NTAPI* ntCreateUserProcess)(
