@@ -182,7 +182,8 @@ int main(int argc, char** argv){
 
   //CreateProcessA reversed:
   //CreateProcessA -> CreateProcessInternalA -> CreateProcessInternalW -> ZwCreateUserProcess -> NtCreateUserProcess
-  //TODO working on a way to do this with NtCreateUserProcess but its NOT EASY
+  //TODO working on a way to do this with NtCreateUserProcess but its NOT EASY MAN
+  //this gonna take alot of reverse engineering
   STARTUPINFO si;
   RtlZeroMemory(&si, sizeof(si));
   si.cb = sizeof(si);
