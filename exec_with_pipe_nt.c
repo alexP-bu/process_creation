@@ -3,12 +3,13 @@
 #define BUFSIZE 4096
 
 int main(int argc, char** argv){
-  
-  //get ntdll / kernel32 and functions we need from it
+  //get our current process
   HANDLE hProcess = NULL;
+  hProcess = NtCurrentProcess();
+
+  //get ntdll / kernel32 and functions we need from it
   HMODULE hNtdll = NULL;
   HMODULE hKernel32 = NULL;
-  hProcess = NtCurrentProcess();
   hNtdll = GetModuleHandleA("Ntdll.dll");
   hKernel32 = GetModuleHandleA("Kernel32.dll");
 
@@ -149,7 +150,6 @@ int main(int argc, char** argv){
 
   //CreateProcessA reversed:
   //CreateProcessA -> CreateProcessInternalA -> CreateProcessInternalW -> ZwCreateUserProcess -> NtCreateUserProcess
-  //TODO working on a way to do this with NtCreateUserProcess, it takes the same params as ZwCreateUserProcess
   PROCESS_INFORMATION pi;
   RtlZeroMemory(&pi, sizeof(pi));
   //setup for A functions:
@@ -210,6 +210,17 @@ int main(int argc, char** argv){
     printf("[!] Error creating process: %d\n", GetLastError());
     return -1;
   };
+  //TODO fourth step: NtCreateUserProcess call, it takes the same params as ZwCreateUserProcess
+  //currently reversing CreateProcessInternalW: 
+  //IsProcessInJob, BaseFormatObjectAttributes, BaseFormatObjectAttributes, RtlFreeAnsiString, BasepFreeAppCompatData,
+  //BasepReleaseSxsCreateProcessUtilityStruct, RtlAllocateHeap, RtlGetExePath, SearchPathW (it finds cmd.exe path),
+  //GetFileAtributesW (on L"C:\\Windows\\System32\\cmd.exe"), RtlDosPathNAmeToNtPathName_U (on L"C:\\Windows\\System32\\cmd.exe"),
+  //RtlInitUnicodeStringEx(on L"C:\\Windows\\System32\\cmd.exe"), RtlDetermineDosPathNameType_u, GetEmbdeddedImageMitigationPolicy,
+  //RtlWow64GetProcessMachines, 
+  //then a function is called with A bunch of RtlInitUnicodeStringEx and RtlCreateProcessParametersWithTemplate
+  //another function is called which then calls LdrQueryImageFileExecutionOptionsEx 
+  //then finally ZwCreateUserProcess -> NtCreateUserProcess is called
+
 
   //read from pipe
   PVOID pvBuffer = NULL;
