@@ -220,7 +220,11 @@ int main(int argc, char** argv){
   //then a function is called with A bunch of RtlInitUnicodeStringEx and RtlCreateProcessParametersWithTemplate
   //another function is called which then calls LdrQueryImageFileExecutionOptionsEx 
   //then finally ZwCreateUserProcess -> NtCreateUserProcess is called
-
+  //then: RtlDestroyProcessParameters, BasepCheckWebBladeHashes, BasepIsProcessAllowed, BasepCheckWinSaferRestrictions, BasepQueryAppCompat,
+  //BasepConstructSxsCreateProcessMessage, CsrCaptureMessageMultiUnicodeStringsInPlace, CsrClientCallServer, BaseCheckElevation, 
+  //BasepGetAppCompatData, ZwAllocateVirtualMemory, ZwWriteVirtualMemory, ZwWriteVirtualMemory, BaseElevationPostProcessing,
+  //ZwResumeThread, RtlFreeAnsiString, BasepReleaseSxsCreateProcessUtilityStruct, RtlFreeHeap, NtCLose, NtClose, BasepFreeAppCompatData,
+  //RtlFreeAnsiString, CsrFreeCaptureBuffer
 
   //read from pipe
   PVOID pvBuffer = NULL;
