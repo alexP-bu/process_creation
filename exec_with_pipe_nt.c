@@ -182,58 +182,6 @@ int main(int argc, char** argv){
 
   //CreateProcessA reversed:
   //CreateProcessA -> CreateProcessInternalA -> CreateProcessInternalW -> ZwCreateUserProcess -> NtCreateUserProcess
-  //So, let's user NtCreateUserProcess to make it happen
-  //https://captmeelo.com/redteam/maldev/2022/05/10/ntcreateuserprocess.html
-  //TODO need to actually make it work lol
-  /*
-  HANDLE hChildProcess = NULL;
-  HANDLE hChildThread = NULL;
-  //setup rtl user process params struct
-  PRTL_USER_PROCESS_PARAMETERS rupp = NULL;
-  UNICODE_STRING ntImagePath;
-  RtlInitUnicodeString(&ntImagePath, (PWSTR)L"\\??\\C:\\Windows\\System32\\cmd.exe cmd /c ping 127.0.0.1");
-  RtlCreateProcessParametersEx(
-    &rupp, 
-    &ntImagePath, 
-    NULL, 
-    NULL, 
-    NULL, 
-    NULL,
-    NULL,
-    NULL,
-    NULL,
-    NULL,
-    RTL_USER_PROCESS_PARAMETERS_NORMALIZED
-  );
-  //setup create info struct
-  PS_CREATE_INFO ci = {0};
-  ci.Size = sizeof(ci);
-  ci.State = PsCreateInitialState;
-  //setup attribute list
-  PPS_ATTRIBUTE_LIST procAL = (PS_ATTRIBUTE_LIST*)RtlAllocateHeap(teb->Peb->ProcessHeap, HEAP_ZERO_MEMORY, sizeof(PS_ATTRIBUTE));
-  procAL->TotalLength = sizeof(PS_ATTRIBUTE_LIST) - sizeof(PS_ATTRIBUTE);
-  procAL->Attributes[0].Attribute = PS_ATTRIBUTE_IMAGE_NAME;
-  procAL->Attributes[0].Size = ntImagePath.Length;
-  procAL->Attributes[0].Value = (ULONG_PTR)ntImagePath.Buffer;
-  ntStatus = NtCreateUserProcess(
-    &hChildProcess,
-    &hChildThread,
-    PROCESS_ALL_ACCESS,
-    THREAD_ALL_ACCESS,
-    NULL,
-    NULL,
-    0,
-    0,
-    rupp,
-    &ci,
-    procAL
-  );
-  if(!NT_SUCCESS(ntStatus)){
-    printf("[!] Error creating user process: %x\n", ntStatus);
-    return -1;
-  }
-  */
-  
   STARTUPINFO si;
   RtlZeroMemory(&si, sizeof(si));
   si.cb = sizeof(si);

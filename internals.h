@@ -150,6 +150,12 @@ typedef NTSTATUS (NTAPI* rtlCreateProcessParametersEx)(
   ULONG Flags
 );
 
+typedef NTSTATUS (NTAPI* rtlFreeHeap)(
+  PVOID HeapHandle,
+  ULONG Flags,
+  PVOID BaseAddress
+);
+
 //http://undocumented.ntinternals.net/index.html?page=UserMode%2FUndocumented%20Functions%2FExecutable%20Images%2FLdrUnloadDll.html
 typedef NTSTATUS (NTAPI* ldrUnloadDll)(
   HANDLE ModuleHandle;
