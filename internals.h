@@ -542,6 +542,10 @@ typedef enum _PS_ATTRIBUTE_NUM{
     PsAttributeValue(PsAttributeEnableOptionalXStateFeatures, TRUE, TRUE, FALSE) // 0x3001E
 
 #define PROCESS_CREATION_MITIGATION_POLICY_BLOCK_NON_MICROSOFT_BINARIES_ALWAYS_ON (0x00000001ull << 44)
+#define PROCESS_CREATE_FLAGS_INHERIT_HANDLES 0x00000004 // NtCreateProcessEx & NtCreateUserProcess
+#define PROCESS_CREATE_FLAGS_BREAKAWAY 0x00000001
+#define PROCESS_CREATE_FLAGS_AUXILIARY_PROCESS 0x00008000 // NtCreateProcessEx & NtCreateUserProcess, requires SeTcb
+#define PROCESS_CREATE_FLAGS_INHERIT_FROM_PARENT 0x00000100
 #define RTL_USER_PROCESS_PARAMETERS_NORMALIZED 0x01
 
 typedef enum _PS_CREATE_STATE{
@@ -680,7 +684,7 @@ typedef struct _PS_ATTRIBUTE{
 
 typedef struct _PS_ATTRIBUTE_LIST{
 	SIZE_T TotalLength;
-	PS_ATTRIBUTE Attributes[5]; // Depends on how many attribute entries should be supplied to NtCreateUserProcess
+	PS_ATTRIBUTE Attributes[1]; // Depends on how many attribute entries should be supplied to NtCreateUserProcess
 } PS_ATTRIBUTE_LIST, * PPS_ATTRIBUTE_LIST;
 
 typedef NTSTATUS (NTAPI* ntCreateUserProcess)(
@@ -711,7 +715,7 @@ typedef NTSTATUS (NTAPI* rtlCreateProcessParametersEx)(
   ULONG Flags
 );
 
-typedef NTSTATUS (NTAPI* rtlAllocateHeap)(
+typedef PVOID (NTAPI* rtlAllocateHeap)(
   PVOID HeapHandle,
 	ULONG Flags,
 	SIZE_T Size

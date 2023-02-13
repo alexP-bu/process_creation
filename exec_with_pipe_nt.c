@@ -63,7 +63,8 @@ int main(int argc, char** argv){
   //remove our use of malloc by using HeapCreate, HeapAlloc, HeapFree, HeapDestroy
   //finally let's bypass HeapAlloc with a direct call to NtAllocateVirtualMemory
   NTSTATUS ntStatus;
-  SIZE_T stCommandLine = (sizeof(BYTE) * (strlen("cmd /c "))) + (sizeof(BYTE) * (dwArgsLen + 1));
+  SIZE_T stCommandLine = (sizeof(BYTE) * (strlen("cmd /c "))) + (sizeof(BYTE) * (dwArgsLen + 1) 
+    + strlen(" > outfile.txt"));
   PVOID lpCommandLine = 0;
   NtAllocateVirtualMemory(
     hCurProcess,
@@ -79,7 +80,8 @@ int main(int argc, char** argv){
   for(DWORD i = 1; i < argc; i++){
     sprintf((PBYTE)lpCommandLine + strlen(lpCommandLine), "%s ", argv[i]);
   }
-  sprintf((PBYTE)lpCommandLine + strlen(lpCommandLine), "%c", '\0');
+  //sprintf((PBYTE)lpCommandLine + strlen(lpCommandLine), " > outfile.txt%c", '\0'); //WE GOT IT TO REDIRECT TO AN OUTPUT FILE
+  sprintf((PBYTE)lpCommandLine + strlen(lpCommandLine), " > outfile.txt%c", '\0');
   //printf("got command line: %s\nlen: %d\n", lpCommandLine, strlen(lpCommandLine)); //DEBUG
 
   //create pipe!
@@ -182,28 +184,31 @@ int main(int argc, char** argv){
   }
   */
   //third step: CreateProcessInternalW call (unicode function):
+  UNICODE_STRING usCommandLine;
+  PVOID wCommandLine = NULL;
+  SIZE_T wCommandLineLen = strlen(lpCommandLine) + 1;
+  NtAllocateVirtualMemory(
+    hCurProcess, 
+    &wCommandLine, 
+    0, 
+    &wCommandLineLen, 
+    MEM_COMMIT | MEM_RESERVE, 
+    PAGE_READWRITE
+  );
+  mbstowcs(wCommandLine, lpCommandLine, wCommandLineLen);
+  RtlInitUnicodeString(&usCommandLine, wCommandLine);
+  /*
   STARTUPINFOW sw;
   RtlZeroMemory(&sw, sizeof(sw));
   sw.cb = sizeof(sw);
   sw.hStdOutput = hWritePipe;
   sw.hStdError = hWritePipe;
   sw.dwFlags = STARTF_USESTDHANDLES;
-  UNICODE_STRING usCommandLine;
-  PVOID wCommandLine = NULL;
-  SIZE_T wCommandLineLen = (sizeof(wchar_t) * (strlen(lpCommandLine) + 1));
-  NtAllocateVirtualMemory(
-    hCurProcess, 
-    &wCommandLine, 
-    0, 
-    &wCommandLineLen, 
-    MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE
-  );
-  mbstowcs(wCommandLine, lpCommandLine, strlen(lpCommandLine)+1);
-  RtlInitUnicodeString(&usCommandLine, wCommandLine);
   if(!CreateProcessInternalW(
     NULL, 
     NULL, 
-    usCommandLine.Buffer, NULL, 
+    usCommandLine.Buffer, 
+    NULL, 
     NULL, 
     TRUE, 
     0, 
@@ -216,6 +221,7 @@ int main(int argc, char** argv){
     printf("[!] Error creating process: %d\n", GetLastError());
     return -1;
   };
+  */
   //TODO fourth step: NtCreateUserProcess call, it takes the same params as ZwCreateUserProcess
   //currently reversing CreateProcessInternalW: 
   //IsProcessInJob, BaseFormatObjectAttributes, BaseFormatObjectAttributes, RtlFreeAnsiString, BasepFreeAppCompatData,
@@ -233,25 +239,19 @@ int main(int argc, char** argv){
   //RtlFreeAnsiString, CsrFreeCaptureBuffer
   
   //IsProcessInJob SKIP
-  HANDLE hProcess;
-  HANDLE hThread;
-  //get image path
-  UNICODE_STRING usImagePath;
-  RtlInitUnicodeString(&usImagePath, (PWSTR)L"C:\\Windows\\System32\\cmd.exe");
+  HANDLE hProcess = NULL;
+  HANDLE hThread = NULL;
   //setup image path name
   UNICODE_STRING usImagePathName;
   RtlInitUnicodeString(&usImagePathName, (PWSTR)L"\\??\\C:\\Windows\\System32\\cmd.exe");
-  //setup the commandline
-  UNICODE_STRING usCmdLine;
-  RtlInitUnicodeString(&usCmdLine, (PWSTR)L"cmd /c ping 127.0.0.1");
   //setup the RTL_USER_PROCESS_PARAMETERS struct
   PRTL_USER_PROCESS_PARAMETERS processParams = NULL;
   ntStatus = RtlCreateProcessParametersEx(
     &processParams,
-    &usImagePath,
+    &usImagePathName,
     NULL,
     NULL,
-    &usCmdLine,
+    &usCommandLine,
     NULL,
     NULL,
     NULL,
@@ -264,68 +264,35 @@ int main(int argc, char** argv){
     return -1;
   }
   //setup the PS_CREATE_INFO struct
-  PS_CREATE_INFO createInfo;
+  PS_CREATE_INFO createInfo = { 0 };
   createInfo.Size = sizeof(createInfo);
   createInfo.State = PsCreateInitialState;
-  createInfo.InitState.u1.InitFlags = PsSkipIFEODebugger;
   //setup the PS_ATTRIBUTES_LIST struct
-  PPS_ATTRIBUTE_LIST attributesList = (PPS_ATTRIBUTE_LIST)RtlAllocateHeap(teb->Peb->ProcessHeap, HEAP_ZERO_MEMORY, sizeof(PS_ATTRIBUTE_LIST));
+  PPS_ATTRIBUTE_LIST attributesList = (PPS_ATTRIBUTE_LIST)RtlAllocateHeap(NtCurrentTeb()->Peb->ProcessHeap, HEAP_ZERO_MEMORY, sizeof(PS_ATTRIBUTE_LIST));
   attributesList->TotalLength = sizeof(PS_ATTRIBUTE_LIST);
   
   //image name
-  attributesList->Attributes[0].Attribute = PS_ATTRIBUTE_IMAGE_NAME;
-  attributesList->Attributes[0].Size = usImagePathName.Length;
-  attributesList->Attributes[0].ValuePtr = usImagePathName.Buffer;
-
-  //parent process
-  attributesList->Attributes[1].Attribute = PS_ATTRIBUTE_PARENT_PROCESS;
-  attributesList->Attributes[1].Size = sizeof(HANDLE);
-  attributesList->Attributes[1].ValuePtr = hCurProcess;
-
-  //client id
-  PCLIENT_ID clientId = (PCLIENT_ID)RtlAllocateHeap(teb->Peb->ProcessHeap, HEAP_ZERO_MEMORY, sizeof(PS_ATTRIBUTE));
-  attributesList->Attributes[2].Attribute = PS_ATTRIBUTE_CLIENT_ID;
-  attributesList->Attributes[2].Size = sizeof(CLIENT_ID);
-  attributesList->Attributes[2].ValuePtr;
-
-  //handle info
-  PPS_STD_HANDLE_INFO stdHandleInfo = (PPS_STD_HANDLE_INFO)RtlAllocateHeap(teb->Peb->ProcessHeap, HEAP_ZERO_MEMORY, sizeof(PS_STD_HANDLE_INFO));
-  attributesList->Attributes[3].Attribute = PS_ATTRIBUTE_STD_HANDLE_INFO;
-  attributesList->Attributes[3].Size = sizeof(PS_STD_HANDLE_INFO);
-  attributesList->Attributes[3].ValuePtr = stdHandleInfo;
-
-  //section info
-  PSECTION_IMAGE_INFORMATION pImageInfo = (PSECTION_IMAGE_INFORMATION)RtlAllocateHeap(teb->Peb->ProcessHeap, HEAP_ZERO_MEMORY, sizeof(SECTION_IMAGE_INFORMATION));
-  attributesList->Attributes[4].Attribute = PS_ATTRIBUTE_IMAGE_INFO;
-  attributesList->Attributes[4].Size = sizeof(SECTION_IMAGE_INFORMATION);
-  attributesList->Attributes[4].ValuePtr = stdHandleInfo;
-
-  //policy
-  DWORD64 policy = PROCESS_CREATION_MITIGATION_POLICY_BLOCK_NON_MICROSOFT_BINARIES_ALWAYS_ON;
-  attributesList->Attributes[5].Attribute = PS_ATTRIBUTE_MITIGATION_OPTIONS;
-  attributesList->Attributes[5].Size = sizeof(DWORD64);
-  attributesList->Attributes[5].ValuePtr = &policy;
-
-  //object attributes
-  OBJECT_ATTRIBUTES psObjectAttr = {sizeof(OBJECT_ATTRIBUTES)};
+	attributesList->Attributes[0].Attribute = PS_ATTRIBUTE_IMAGE_NAME;
+	attributesList->Attributes[0].Size = usImagePathName.Length;
+	attributesList->Attributes[0].ValuePtr = usImagePathName.Buffer;
+  //call ntcreateuserprocess
   ntStatus = NtCreateUserProcess(
-    hProcess,
-    hThread,
-    MAXIMUM_ALLOWED,
-    MAXIMUM_ALLOWED,
-    &psObjectAttr,
-    &psObjectAttr,
-    0,
+    &hProcess,
+    &hThread,
+    PROCESS_ALL_ACCESS,
+    THREAD_ALL_ACCESS,
+    NULL,
+    NULL,
+    PROCESS_CREATE_FLAGS_INHERIT_FROM_PARENT | PROCESS_CREATE_FLAGS_INHERIT_HANDLES,
     0,
     processParams,
     &createInfo,
     attributesList
   );
   if(!NT_SUCCESS(ntStatus)){
-    printf("[!] failed to create process: %x\n", ntStatus);
+    printf("[!] failed to create user process: %x\n", ntStatus);
     return -1;
   }
-
 
   //read from pipe
   PVOID pvBuffer = NULL;
@@ -344,7 +311,7 @@ int main(int argc, char** argv){
   LARGE_INTEGER liTimeout;
   liTimeout.QuadPart = 50;
   ULONG totBytes = 0;
-  while(NtWaitForSingleObject(pi.hProcess, TRUE, &liTimeout)){
+  while(NtWaitForSingleObject(hProcess, TRUE, &liTimeout)){
     //reversed PeekNamedPipe:
     //PeekNamedPipe -> RtlAllocateHeap, ZwCreateEvent, ZwFsControlFile, RtlFreeHeap, NtClose
     //We want ZwFsControlFile -> NtFsControlFile with FSCTL_PIPE_PEEK
@@ -422,7 +389,7 @@ int main(int argc, char** argv){
   NtClose(hReadPipe);
   NtFreeVirtualMemory(hCurProcess, &lpCommandLine, &stCommandLine, MEM_RELEASE);
   NtFreeVirtualMemory(hCurProcess, &pvBuffer, &stBufferSize, MEM_RELEASE);
-  NtFreeVirtualMemory(hCurProcess, &wCommandLine, &wCommandLineLen, MEM_RELEASE);
+  //NtFreeVirtualMemory(hCurProcess, &wCommandLine, &wCommandLineLen, MEM_RELEASE);
   LdrUnloadDll(hNtdll);
   LdrUnloadDll(hKernel32);
   return 0;
