@@ -4,8 +4,8 @@
 
 int main(int argc, char** argv){
   //get our current process
-  HANDLE hProcess = NULL;
-  hProcess = NtCurrentProcess();
+  HANDLE hCurProcess = NULL;
+  hCurProcess = NtCurrentProcess();
 
   //get ntdll / kernel32 and functions we need from it
   HMODULE hNtdll = NULL;
@@ -26,6 +26,9 @@ int main(int argc, char** argv){
   FARPROC fpRtlInitUnicodeString = GetProcAddress(hNtdll, "RtlInitUnicodeString");
   FARPROC fpNtOpenFile = GetProcAddress(hNtdll, "NtOpenFile");
   FARPROC fpLdrUnloadDll = GetProcAddress(hNtdll, "LdrUnloadDll");
+  FARPROC fpNtCreateUserProcess = GetProcAddress(hNtdll, "NtCreateUserProcess");
+  FARPROC fpRtlCreateProcessParametersEx = GetProcAddress(hNtdll, "RtlCreateProcessParametersEx");
+  FARPROC fpRtlAllocateHeap = GetProcAddress(hNtdll, "RtlAllocateHeap");
 
   //cast functions to get our Nt function pointers
   ntAllocateVirtualMemory NtAllocateVirtualMemory = (ntAllocateVirtualMemory)fpNtAllocateVirtualMemory;
@@ -40,6 +43,9 @@ int main(int argc, char** argv){
   rtlInitUnicodeString RtlInitUnicodeString = (rtlInitUnicodeString)fpRtlInitUnicodeString;
   ntOpenFile NtOpenFile = (ntOpenFile)fpNtOpenFile;
   ldrUnloadDll LdrUnloadDll = (ldrUnloadDll)fpLdrUnloadDll;
+  ntCreateUserProcess NtCreateUserProcess = (ntCreateUserProcess)fpNtCreateUserProcess;
+  rtlCreateProcessParametersEx RtlCreateProcessParametersEx = (rtlCreateProcessParametersEx)fpRtlCreateProcessParametersEx;
+  rtlAllocateHeap RtlAllocateHeap = (rtlAllocateHeap)fpRtlAllocateHeap;
 
   //kernel32.dll functions for createprocess
   FARPROC fpCreateProcessInternalA = GetProcAddress(hKernel32, "CreateProcessInternalA");
@@ -60,7 +66,7 @@ int main(int argc, char** argv){
   SIZE_T stCommandLine = (sizeof(BYTE) * (strlen("cmd /c "))) + (sizeof(BYTE) * (dwArgsLen + 1));
   PVOID lpCommandLine = 0;
   NtAllocateVirtualMemory(
-    hProcess,
+    hCurProcess,
     &lpCommandLine,
     0,
     &stCommandLine,
@@ -186,7 +192,7 @@ int main(int argc, char** argv){
   PVOID wCommandLine = NULL;
   SIZE_T wCommandLineLen = (sizeof(wchar_t) * (strlen(lpCommandLine) + 1));
   NtAllocateVirtualMemory(
-    hProcess, 
+    hCurProcess, 
     &wCommandLine, 
     0, 
     &wCommandLineLen, 
@@ -225,12 +231,107 @@ int main(int argc, char** argv){
   //BasepGetAppCompatData, ZwAllocateVirtualMemory, ZwWriteVirtualMemory, ZwWriteVirtualMemory, BaseElevationPostProcessing,
   //ZwResumeThread, RtlFreeAnsiString, BasepReleaseSxsCreateProcessUtilityStruct, RtlFreeHeap, NtCLose, NtClose, BasepFreeAppCompatData,
   //RtlFreeAnsiString, CsrFreeCaptureBuffer
+  
+  //IsProcessInJob SKIP
+  HANDLE hProcess;
+  HANDLE hThread;
+  //get image path
+  UNICODE_STRING usImagePath;
+  RtlInitUnicodeString(&usImagePath, (PWSTR)L"C:\\Windows\\System32\\cmd.exe");
+  //setup image path name
+  UNICODE_STRING usImagePathName;
+  RtlInitUnicodeString(&usImagePathName, (PWSTR)L"\\??\\C:\\Windows\\System32\\cmd.exe");
+  //setup the commandline
+  UNICODE_STRING usCmdLine;
+  RtlInitUnicodeString(&usCmdLine, (PWSTR)L"cmd /c ping 127.0.0.1");
+  //setup the RTL_USER_PROCESS_PARAMETERS struct
+  PRTL_USER_PROCESS_PARAMETERS processParams = NULL;
+  ntStatus = RtlCreateProcessParametersEx(
+    &processParams,
+    &usImagePath,
+    NULL,
+    NULL,
+    &usCmdLine,
+    NULL,
+    NULL,
+    NULL,
+    NULL,
+    NULL,
+    RTL_USER_PROCESS_PARAMETERS_NORMALIZED
+  );
+  if(!NT_SUCCESS(ntStatus)){
+    printf("[!] Error creating process params: %x\n", ntStatus);
+    return -1;
+  }
+  //setup the PS_CREATE_INFO struct
+  PS_CREATE_INFO createInfo;
+  createInfo.Size = sizeof(createInfo);
+  createInfo.State = PsCreateInitialState;
+  createInfo.InitState.u1.InitFlags = PsSkipIFEODebugger;
+  //setup the PS_ATTRIBUTES_LIST struct
+  PPS_ATTRIBUTE_LIST attributesList = (PPS_ATTRIBUTE_LIST)RtlAllocateHeap(teb->Peb->ProcessHeap, HEAP_ZERO_MEMORY, sizeof(PS_ATTRIBUTE_LIST));
+  attributesList->TotalLength = sizeof(PS_ATTRIBUTE_LIST);
+  
+  //image name
+  attributesList->Attributes[0].Attribute = PS_ATTRIBUTE_IMAGE_NAME;
+  attributesList->Attributes[0].Size = usImagePathName.Length;
+  attributesList->Attributes[0].ValuePtr = usImagePathName.Buffer;
+
+  //parent process
+  attributesList->Attributes[1].Attribute = PS_ATTRIBUTE_PARENT_PROCESS;
+  attributesList->Attributes[1].Size = sizeof(HANDLE);
+  attributesList->Attributes[1].ValuePtr = hCurProcess;
+
+  //client id
+  PCLIENT_ID clientId = (PCLIENT_ID)RtlAllocateHeap(teb->Peb->ProcessHeap, HEAP_ZERO_MEMORY, sizeof(PS_ATTRIBUTE));
+  attributesList->Attributes[2].Attribute = PS_ATTRIBUTE_CLIENT_ID;
+  attributesList->Attributes[2].Size = sizeof(CLIENT_ID);
+  attributesList->Attributes[2].ValuePtr;
+
+  //handle info
+  PPS_STD_HANDLE_INFO stdHandleInfo = (PPS_STD_HANDLE_INFO)RtlAllocateHeap(teb->Peb->ProcessHeap, HEAP_ZERO_MEMORY, sizeof(PS_STD_HANDLE_INFO));
+  attributesList->Attributes[3].Attribute = PS_ATTRIBUTE_STD_HANDLE_INFO;
+  attributesList->Attributes[3].Size = sizeof(PS_STD_HANDLE_INFO);
+  attributesList->Attributes[3].ValuePtr = stdHandleInfo;
+
+  //section info
+  PSECTION_IMAGE_INFORMATION pImageInfo = (PSECTION_IMAGE_INFORMATION)RtlAllocateHeap(teb->Peb->ProcessHeap, HEAP_ZERO_MEMORY, sizeof(SECTION_IMAGE_INFORMATION));
+  attributesList->Attributes[4].Attribute = PS_ATTRIBUTE_IMAGE_INFO;
+  attributesList->Attributes[4].Size = sizeof(SECTION_IMAGE_INFORMATION);
+  attributesList->Attributes[4].ValuePtr = stdHandleInfo;
+
+  //policy
+  DWORD64 policy = PROCESS_CREATION_MITIGATION_POLICY_BLOCK_NON_MICROSOFT_BINARIES_ALWAYS_ON;
+  attributesList->Attributes[5].Attribute = PS_ATTRIBUTE_MITIGATION_OPTIONS;
+  attributesList->Attributes[5].Size = sizeof(DWORD64);
+  attributesList->Attributes[5].ValuePtr = &policy;
+
+  //object attributes
+  OBJECT_ATTRIBUTES psObjectAttr = {sizeof(OBJECT_ATTRIBUTES)};
+  ntStatus = NtCreateUserProcess(
+    hProcess,
+    hThread,
+    MAXIMUM_ALLOWED,
+    MAXIMUM_ALLOWED,
+    &psObjectAttr,
+    &psObjectAttr,
+    0,
+    0,
+    processParams,
+    &createInfo,
+    attributesList
+  );
+  if(!NT_SUCCESS(ntStatus)){
+    printf("[!] failed to create process: %x\n", ntStatus);
+    return -1;
+  }
+
 
   //read from pipe
   PVOID pvBuffer = NULL;
   SIZE_T stBufferSize = (SIZE_T)(sizeof(BYTE) * BUFSIZE);
   NtAllocateVirtualMemory(
-    hProcess, 
+    hCurProcess, 
     &pvBuffer, 
     0, 
     &stBufferSize, 
@@ -319,9 +420,9 @@ int main(int argc, char** argv){
   NtClose(pi.hProcess);
   NtClose(hWritePipe);
   NtClose(hReadPipe);
-  NtFreeVirtualMemory(hProcess, &lpCommandLine, &stCommandLine, MEM_RELEASE);
-  NtFreeVirtualMemory(hProcess, &pvBuffer, &stBufferSize, MEM_RELEASE);
-  NtFreeVirtualMemory(hProcess, &wCommandLine, &wCommandLineLen, MEM_RELEASE);
+  NtFreeVirtualMemory(hCurProcess, &lpCommandLine, &stCommandLine, MEM_RELEASE);
+  NtFreeVirtualMemory(hCurProcess, &pvBuffer, &stBufferSize, MEM_RELEASE);
+  NtFreeVirtualMemory(hCurProcess, &wCommandLine, &wCommandLineLen, MEM_RELEASE);
   LdrUnloadDll(hNtdll);
   LdrUnloadDll(hKernel32);
   return 0;
