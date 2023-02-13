@@ -3,13 +3,12 @@
 #define BUFSIZE 4096
 
 int main(int argc, char** argv){
-  //get our current process
-  HANDLE hCurProcess = NULL;
-  hCurProcess = NtCurrentProcess();
-
+  
   //get ntdll / kernel32 and functions we need from it
+  HANDLE hProcess = NULL;
   HMODULE hNtdll = NULL;
   HMODULE hKernel32 = NULL;
+  hProcess = NtCurrentProcess();
   hNtdll = GetModuleHandleA("Ntdll.dll");
   hKernel32 = GetModuleHandleA("Kernel32.dll");
 
@@ -26,9 +25,6 @@ int main(int argc, char** argv){
   FARPROC fpRtlInitUnicodeString = GetProcAddress(hNtdll, "RtlInitUnicodeString");
   FARPROC fpNtOpenFile = GetProcAddress(hNtdll, "NtOpenFile");
   FARPROC fpLdrUnloadDll = GetProcAddress(hNtdll, "LdrUnloadDll");
-  FARPROC fpNtCreateUserProcess = GetProcAddress(hNtdll, "NtCreateUserProcess");
-  FARPROC fpRtlCreateProcessParametersEx = GetProcAddress(hNtdll, "RtlCreateProcessParametersEx");
-  FARPROC fpRtlAllocateHeap = GetProcAddress(hNtdll, "RtlAllocateHeap");
 
   //cast functions to get our Nt function pointers
   ntAllocateVirtualMemory NtAllocateVirtualMemory = (ntAllocateVirtualMemory)fpNtAllocateVirtualMemory;
@@ -43,9 +39,6 @@ int main(int argc, char** argv){
   rtlInitUnicodeString RtlInitUnicodeString = (rtlInitUnicodeString)fpRtlInitUnicodeString;
   ntOpenFile NtOpenFile = (ntOpenFile)fpNtOpenFile;
   ldrUnloadDll LdrUnloadDll = (ldrUnloadDll)fpLdrUnloadDll;
-  ntCreateUserProcess NtCreateUserProcess = (ntCreateUserProcess)fpNtCreateUserProcess;
-  rtlCreateProcessParametersEx RtlCreateProcessParametersEx = (rtlCreateProcessParametersEx)fpRtlCreateProcessParametersEx;
-  rtlAllocateHeap RtlAllocateHeap = (rtlAllocateHeap)fpRtlAllocateHeap;
 
   //kernel32.dll functions for createprocess
   FARPROC fpCreateProcessInternalA = GetProcAddress(hKernel32, "CreateProcessInternalA");
@@ -63,11 +56,10 @@ int main(int argc, char** argv){
   //remove our use of malloc by using HeapCreate, HeapAlloc, HeapFree, HeapDestroy
   //finally let's bypass HeapAlloc with a direct call to NtAllocateVirtualMemory
   NTSTATUS ntStatus;
-  SIZE_T stCommandLine = (sizeof(BYTE) * (strlen("/c start /min cmd /c "))) + (sizeof(BYTE) * (dwArgsLen + 1) 
-    + strlen(" > outfile.txt") + 2); 
+  SIZE_T stCommandLine = (sizeof(BYTE) * (strlen("cmd /c "))) + (sizeof(BYTE) * (dwArgsLen + 1));
   PVOID lpCommandLine = 0;
   NtAllocateVirtualMemory(
-    hCurProcess,
+    hProcess,
     &lpCommandLine,
     0,
     &stCommandLine,
@@ -76,12 +68,11 @@ int main(int argc, char** argv){
   );
 
   //format: cmd /c program arg0 arg1 
-  sprintf(lpCommandLine, "/c start /min cmd /c \"");
+  sprintf(lpCommandLine, "cmd /c ");
   for(DWORD i = 1; i < argc; i++){
     sprintf((PBYTE)lpCommandLine + strlen(lpCommandLine), "%s ", argv[i]);
   }
-  //sprintf((PBYTE)lpCommandLine + strlen(lpCommandLine), " > outfile.txt%c", '\0'); //WE GOT IT TO REDIRECT TO AN OUTPUT FILE now to named pipe..
-  sprintf((PBYTE)lpCommandLine + strlen(lpCommandLine), " > outfile.txt\"%c", '\0');
+  sprintf((PBYTE)lpCommandLine + strlen(lpCommandLine), "%c", '\0');
   //printf("got command line: %s\nlen: %d\n", lpCommandLine, strlen(lpCommandLine)); //DEBUG
 
   //create pipe!
@@ -158,6 +149,7 @@ int main(int argc, char** argv){
 
   //CreateProcessA reversed:
   //CreateProcessA -> CreateProcessInternalA -> CreateProcessInternalW -> ZwCreateUserProcess -> NtCreateUserProcess
+  //TODO working on a way to do this with NtCreateUserProcess, it takes the same params as ZwCreateUserProcess
   PROCESS_INFORMATION pi;
   RtlZeroMemory(&pi, sizeof(pi));
   //setup for A functions:
@@ -184,31 +176,28 @@ int main(int argc, char** argv){
   }
   */
   //third step: CreateProcessInternalW call (unicode function):
-  UNICODE_STRING usCommandLine;
-  PVOID wCommandLine = NULL;
-  SIZE_T wCommandLineLen = strlen(lpCommandLine) + 1;
-  NtAllocateVirtualMemory(
-    hCurProcess, 
-    &wCommandLine, 
-    0, 
-    &wCommandLineLen, 
-    MEM_COMMIT | MEM_RESERVE, 
-    PAGE_READWRITE
-  );
-  mbstowcs(wCommandLine, lpCommandLine, wCommandLineLen);
-  RtlInitUnicodeString(&usCommandLine, wCommandLine);
-  /*
   STARTUPINFOW sw;
   RtlZeroMemory(&sw, sizeof(sw));
   sw.cb = sizeof(sw);
   sw.hStdOutput = hWritePipe;
   sw.hStdError = hWritePipe;
   sw.dwFlags = STARTF_USESTDHANDLES;
+  UNICODE_STRING usCommandLine;
+  PVOID wCommandLine = NULL;
+  SIZE_T wCommandLineLen = (sizeof(wchar_t) * (strlen(lpCommandLine) + 1));
+  NtAllocateVirtualMemory(
+    hProcess, 
+    &wCommandLine, 
+    0, 
+    &wCommandLineLen, 
+    MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE
+  );
+  mbstowcs(wCommandLine, lpCommandLine, strlen(lpCommandLine)+1);
+  RtlInitUnicodeString(&usCommandLine, wCommandLine);
   if(!CreateProcessInternalW(
     NULL, 
     NULL, 
-    usCommandLine.Buffer, 
-    NULL, 
+    usCommandLine.Buffer, NULL, 
     NULL, 
     TRUE, 
     0, 
@@ -221,88 +210,12 @@ int main(int argc, char** argv){
     printf("[!] Error creating process: %d\n", GetLastError());
     return -1;
   };
-  */
-  //TODO fourth step: NtCreateUserProcess call, it takes the same params as ZwCreateUserProcess
-  //currently reversing CreateProcessInternalW: 
-  //IsProcessInJob, BaseFormatObjectAttributes, BaseFormatObjectAttributes, RtlFreeAnsiString, BasepFreeAppCompatData,
-  //BasepReleaseSxsCreateProcessUtilityStruct, RtlAllocateHeap, RtlGetExePath, SearchPathW (it finds cmd.exe path),
-  //GetFileAtributesW (on L"C:\\Windows\\System32\\cmd.exe"), RtlDosPathNAmeToNtPathName_U (on L"C:\\Windows\\System32\\cmd.exe"),
-  //RtlInitUnicodeStringEx(on L"C:\\Windows\\System32\\cmd.exe"), RtlDetermineDosPathNameType_u, GetEmbdeddedImageMitigationPolicy,
-  //RtlWow64GetProcessMachines, 
-  //then a function is called with A bunch of RtlInitUnicodeStringEx and RtlCreateProcessParametersWithTemplate
-  //another function is called which then calls LdrQueryImageFileExecutionOptionsEx 
-  //then finally ZwCreateUserProcess -> NtCreateUserProcess is called
-  //then: RtlDestroyProcessParameters, BasepCheckWebBladeHashes, BasepIsProcessAllowed, BasepCheckWinSaferRestrictions, BasepQueryAppCompat,
-  //BasepConstructSxsCreateProcessMessage, CsrCaptureMessageMultiUnicodeStringsInPlace, CsrClientCallServer, BaseCheckElevation, 
-  //BasepGetAppCompatData, ZwAllocateVirtualMemory, ZwWriteVirtualMemory, ZwWriteVirtualMemory, BaseElevationPostProcessing,
-  //ZwResumeThread, RtlFreeAnsiString, BasepReleaseSxsCreateProcessUtilityStruct, RtlFreeHeap, NtCLose, NtClose, BasepFreeAppCompatData,
-  //RtlFreeAnsiString, CsrFreeCaptureBuffer
-  
-  //IsProcessInJob SKIP
-  HANDLE hProcess = NULL;
-  HANDLE hThread = NULL;
-  //setup image path name
-  UNICODE_STRING usImagePathName;
-  RtlInitUnicodeString(&usImagePathName, (PWSTR)L"\\??\\C:\\Windows\\System32\\cmd.exe");
-  //setup the RTL_USER_PROCESS_PARAMETERS struct
-  PRTL_USER_PROCESS_PARAMETERS processParams = NULL;
-  ntStatus = RtlCreateProcessParametersEx(
-    &processParams,
-    &usImagePathName,
-    NULL,
-    NULL,
-    &usCommandLine,
-    NULL,
-    NULL,
-    NULL,
-    NULL,
-    NULL,
-    RTL_USER_PROCESS_PARAMETERS_NORMALIZED
-  );
-  if(!NT_SUCCESS(ntStatus)){
-    printf("[!] Error creating process params: %x\n", ntStatus);
-    return -1;
-  }
-  //setup the PS_CREATE_INFO struct
-  PS_CREATE_INFO createInfo = { 0 };
-  createInfo.Size = sizeof(createInfo);
-  createInfo.State = PsCreateInitialState;
-  //setup the PS_ATTRIBUTES_LIST struct
-  PPS_ATTRIBUTE_LIST attributesList = RtlAllocateHeap(
-    NtCurrentTeb()->Peb->ProcessHeap, 
-    HEAP_ZERO_MEMORY, 
-    sizeof(PS_ATTRIBUTE_LIST)
-  );
-  attributesList->TotalLength = sizeof(PS_ATTRIBUTE_LIST);
-  
-  //image name
-	attributesList->Attributes[0].Attribute = PS_ATTRIBUTE_IMAGE_NAME;
-	attributesList->Attributes[0].Size = usImagePathName.Length;
-	attributesList->Attributes[0].ValuePtr = usImagePathName.Buffer;
-  //call ntcreateuserprocess
-  ntStatus = NtCreateUserProcess(
-    &hProcess,
-    &hThread,
-    MAXIMUM_ALLOWED,
-    MAXIMUM_ALLOWED,
-    NULL,
-    NULL,
-    PROCESS_CREATE_FLAGS_INHERIT_FROM_PARENT,
-    0,
-    processParams,
-    &createInfo,
-    attributesList
-  );
-  if(!NT_SUCCESS(ntStatus)){
-    printf("[!] failed to create user process: %x\n", ntStatus);
-    return -1;
-  }
 
   //read from pipe
   PVOID pvBuffer = NULL;
   SIZE_T stBufferSize = (SIZE_T)(sizeof(BYTE) * BUFSIZE);
   NtAllocateVirtualMemory(
-    hCurProcess, 
+    hProcess, 
     &pvBuffer, 
     0, 
     &stBufferSize, 
@@ -315,7 +228,7 @@ int main(int argc, char** argv){
   LARGE_INTEGER liTimeout;
   liTimeout.QuadPart = 50;
   ULONG totBytes = 0;
-  while(NtWaitForSingleObject(hProcess, TRUE, &liTimeout)){
+  while(NtWaitForSingleObject(pi.hProcess, TRUE, &liTimeout)){
     //reversed PeekNamedPipe:
     //PeekNamedPipe -> RtlAllocateHeap, ZwCreateEvent, ZwFsControlFile, RtlFreeHeap, NtClose
     //We want ZwFsControlFile -> NtFsControlFile with FSCTL_PIPE_PEEK
@@ -391,9 +304,9 @@ int main(int argc, char** argv){
   NtClose(pi.hProcess);
   NtClose(hWritePipe);
   NtClose(hReadPipe);
-  NtFreeVirtualMemory(hCurProcess, &lpCommandLine, &stCommandLine, MEM_RELEASE);
-  NtFreeVirtualMemory(hCurProcess, &pvBuffer, &stBufferSize, MEM_RELEASE);
-  //NtFreeVirtualMemory(hCurProcess, &wCommandLine, &wCommandLineLen, MEM_RELEASE);
+  NtFreeVirtualMemory(hProcess, &lpCommandLine, &stCommandLine, MEM_RELEASE);
+  NtFreeVirtualMemory(hProcess, &pvBuffer, &stBufferSize, MEM_RELEASE);
+  NtFreeVirtualMemory(hProcess, &wCommandLine, &wCommandLineLen, MEM_RELEASE);
   LdrUnloadDll(hNtdll);
   LdrUnloadDll(hKernel32);
   return 0;
