@@ -63,8 +63,8 @@ int main(int argc, char** argv){
   //remove our use of malloc by using HeapCreate, HeapAlloc, HeapFree, HeapDestroy
   //finally let's bypass HeapAlloc with a direct call to NtAllocateVirtualMemory
   NTSTATUS ntStatus;
-  SIZE_T stCommandLine = (sizeof(BYTE) * (strlen("cmd /c "))) + (sizeof(BYTE) * (dwArgsLen + 1) 
-    + strlen(" > outfile.txt"));
+  SIZE_T stCommandLine = (sizeof(BYTE) * (strlen("/c start /min cmd /c "))) + (sizeof(BYTE) * (dwArgsLen + 1) 
+    + strlen(" > outfile.txt") + 2); 
   PVOID lpCommandLine = 0;
   NtAllocateVirtualMemory(
     hCurProcess,
@@ -76,12 +76,12 @@ int main(int argc, char** argv){
   );
 
   //format: cmd /c program arg0 arg1 
-  sprintf(lpCommandLine, "cmd /c ");
+  sprintf(lpCommandLine, "/c start /min cmd /c \"");
   for(DWORD i = 1; i < argc; i++){
     sprintf((PBYTE)lpCommandLine + strlen(lpCommandLine), "%s ", argv[i]);
   }
-  //sprintf((PBYTE)lpCommandLine + strlen(lpCommandLine), " > outfile.txt%c", '\0'); //WE GOT IT TO REDIRECT TO AN OUTPUT FILE
-  sprintf((PBYTE)lpCommandLine + strlen(lpCommandLine), " > outfile.txt%c", '\0');
+  //sprintf((PBYTE)lpCommandLine + strlen(lpCommandLine), " > outfile.txt%c", '\0'); //WE GOT IT TO REDIRECT TO AN OUTPUT FILE now to named pipe..
+  sprintf((PBYTE)lpCommandLine + strlen(lpCommandLine), " > outfile.txt\"%c", '\0');
   //printf("got command line: %s\nlen: %d\n", lpCommandLine, strlen(lpCommandLine)); //DEBUG
 
   //create pipe!
@@ -268,7 +268,11 @@ int main(int argc, char** argv){
   createInfo.Size = sizeof(createInfo);
   createInfo.State = PsCreateInitialState;
   //setup the PS_ATTRIBUTES_LIST struct
-  PPS_ATTRIBUTE_LIST attributesList = (PPS_ATTRIBUTE_LIST)RtlAllocateHeap(NtCurrentTeb()->Peb->ProcessHeap, HEAP_ZERO_MEMORY, sizeof(PS_ATTRIBUTE_LIST));
+  PPS_ATTRIBUTE_LIST attributesList = RtlAllocateHeap(
+    NtCurrentTeb()->Peb->ProcessHeap, 
+    HEAP_ZERO_MEMORY, 
+    sizeof(PS_ATTRIBUTE_LIST)
+  );
   attributesList->TotalLength = sizeof(PS_ATTRIBUTE_LIST);
   
   //image name
