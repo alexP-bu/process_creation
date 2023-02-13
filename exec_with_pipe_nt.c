@@ -287,7 +287,7 @@ int main(int argc, char** argv){
     MAXIMUM_ALLOWED,
     NULL,
     NULL,
-    PROCESS_CREATE_FLAGS_INHERIT_FROM_PARENT,
+    PROCESS_CREATE_FLAGS_INHERIT_HANDLES,
     0,
     processParams,
     &createInfo,
