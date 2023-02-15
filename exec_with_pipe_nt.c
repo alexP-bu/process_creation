@@ -63,8 +63,7 @@ int main(int argc, char** argv){
   //remove our use of malloc by using HeapCreate, HeapAlloc, HeapFree, HeapDestroy
   //finally let's bypass HeapAlloc with a direct call to NtAllocateVirtualMemory
   NTSTATUS ntStatus;
-  SIZE_T stCommandLine = (sizeof(BYTE) * (strlen("/c start /min cmd /c "))) + (sizeof(BYTE) * (dwArgsLen + 1) 
-    + strlen(" > outfile.txt") + 2); 
+  SIZE_T stCommandLine = (sizeof(BYTE) * (strlen("cmd /c "))) + (sizeof(BYTE) * (dwArgsLen + 1));
   PVOID lpCommandLine = 0;
   NtAllocateVirtualMemory(
     hCurProcess,
@@ -76,12 +75,13 @@ int main(int argc, char** argv){
   );
 
   //format: cmd /c program arg0 arg1 
-  sprintf(lpCommandLine, "/c start /min cmd /c \"");
+  sprintf(lpCommandLine, "cmd /c ");
   for(DWORD i = 1; i < argc; i++){
     sprintf((PBYTE)lpCommandLine + strlen(lpCommandLine), "%s ", argv[i]);
   }
+  sprintf((PBYTE)lpCommandLine + strlen(lpCommandLine), "%c", '\0');
   //sprintf((PBYTE)lpCommandLine + strlen(lpCommandLine), " > outfile.txt%c", '\0'); //WE GOT IT TO REDIRECT TO AN OUTPUT FILE now to named pipe..
-  sprintf((PBYTE)lpCommandLine + strlen(lpCommandLine), " > outfile.txt\"%c", '\0');
+  //sprintf((PBYTE)lpCommandLine + strlen(lpCommandLine), " > outfile.txt\"%c", '\0');
   //printf("got command line: %s\nlen: %d\n", lpCommandLine, strlen(lpCommandLine)); //DEBUG
 
   //create pipe!
@@ -263,6 +263,8 @@ int main(int argc, char** argv){
     printf("[!] Error creating process params: %x\n", ntStatus);
     return -1;
   }
+  processParams->StdOutputHandle = hWritePipe;
+  processParams->StdErrorHandle = hWritePipe;
   //setup the PS_CREATE_INFO struct
   PS_CREATE_INFO createInfo = { 0 };
   createInfo.Size = sizeof(createInfo);
@@ -279,6 +281,7 @@ int main(int argc, char** argv){
 	attributesList->Attributes[0].Attribute = PS_ATTRIBUTE_IMAGE_NAME;
 	attributesList->Attributes[0].Size = usImagePathName.Length;
 	attributesList->Attributes[0].ValuePtr = usImagePathName.Buffer;
+  
   //call ntcreateuserprocess
   ntStatus = NtCreateUserProcess(
     &hProcess,

@@ -184,7 +184,7 @@ int main(int argc, char** argv){
   sw.dwFlags = STARTF_USESTDHANDLES;
   UNICODE_STRING usCommandLine;
   PVOID wCommandLine = NULL;
-  SIZE_T wCommandLineLen = (sizeof(wchar_t) * (strlen(lpCommandLine) + 1));
+  SIZE_T wCommandLineLen = strlen(lpCommandLine) + 1;
   NtAllocateVirtualMemory(
     hProcess, 
     &wCommandLine, 
@@ -197,7 +197,8 @@ int main(int argc, char** argv){
   if(!CreateProcessInternalW(
     NULL, 
     NULL, 
-    usCommandLine.Buffer, NULL, 
+    usCommandLine.Buffer, 
+    NULL, 
     NULL, 
     TRUE, 
     0, 
